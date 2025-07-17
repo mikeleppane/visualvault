@@ -4,7 +4,7 @@ A modern, terminal-based media file organizer built with Rust
 <img alt="Status" src="https://img.shields.io/badge/Status-Work in Progress-yellow">
 <img alt="Rust" src="https://img.shields.io/badge/Rust-1.88-orange">
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
-<p align="center"> <img src="https://via.placeholder.com/800x400/1a1a2e/16213e?text=VisualVault+Terminal+UI" alt="VisualVault Screenshot" /> </p>
+<p align="center"> <img src="images/screenshot.png" alt="VisualVault Screenshot" /> </p>
 🚧 Work in Progress
 Note: VisualVault is currently under active development. Features may be incomplete or subject to change. Contributions and feedback are welcome!
 

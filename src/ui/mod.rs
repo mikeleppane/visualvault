@@ -1,8 +1,9 @@
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    widgets::{Block, Borders, Clear, Paragraph},
+    text::{Line, Span},
+    widgets::{Block, Borders, Clear, Padding, Paragraph},
 };
 
 use crate::app::{App, AppState};
@@ -18,7 +19,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .direction(Direction::Vertical)
         .margin(0)
         .constraints([
-            Constraint::Length(3), // Header
+            Constraint::Length(5), // Increased header height from 3 to 5
             Constraint::Min(0),    // Main content
             Constraint::Length(3), // Status bar
         ])
@@ -43,10 +44,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
             f.render_widget(Clear, chunks[1]);
             f.render_widget(content, chunks[1]);
-        } /* AppState::Settings => settings::draw(f, chunks[1], app),
-          AppState::Scanning | AppState::Organizing => progress::draw(f, chunks[1], app),
-          AppState::Search => search::draw(f, chunks[1], app),
-          AppState::DuplicateReview => draw_duplicate_review(f, chunks[1], app), */
+        }
     }
 
     // Draw status bar
@@ -59,106 +57,263 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 }
 
 fn draw_header(f: &mut Frame, area: Rect, app: &App) {
-    let header_text = format!(
-        " 🖼️  VisualVault - {} ",
-        match app.state {
-            AppState::Dashboard => "Dashboard",
-            AppState::Settings => "Settings",
-            AppState::Scanning => "Scanning Files",
-            AppState::Organizing => "Organizing Files",
-            AppState::Search => "Search",
-            AppState::DuplicateReview => "Duplicate Review",
-        }
-    );
+    // Create ASCII art logo
+    let logo_lines = [
+        "╔═══════════════════════════════════════════════════════════════════╗",
+        "║  🖼️  ╦  ╦╦╔═╗╦ ╦╔═╗╦    ╦  ╦╔═╗╦ ╦╦  ╔╦╗  🖼️                     ║",
+        "║      ╚╗╔╝║╚═╗║ ║╠═╣║    ╚╗╔╝╠═╣║ ║║   ║                           ║",
+        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.1    ║",
+        "╚═══════════════════════════════════════════════════════════════════╝",
+    ];
 
-    let header = Paragraph::new(header_text)
-        .style(
+    // Create the header content with multiple styled spans
+    let mut header_lines = Vec::new();
+
+    for (i, line) in logo_lines.iter().enumerate() {
+        let styled_line = match i {
+            0 | 4 => {
+                // Border lines
+                Line::from(vec![Span::styled(
+                    *line,
+                    Style::default().fg(Color::Rgb(100, 100, 100)),
+                )])
+            }
+            1 | 2 | 3 => {
+                // Logo lines with gradient effect
+                let parts: Vec<&str> = line.split("  ").collect();
+                let mut spans = Vec::new();
+
+                for (j, part) in parts.iter().enumerate() {
+                    if part.contains("🖼️") {
+                        spans.push(Span::raw("🖼️"));
+                    } else if part.contains("╦") || part.contains("╚") || part.contains("╩") {
+                        // ASCII art characters with cyan gradient
+                        let color = match i {
+                            1 => Color::Cyan,
+                            2 => Color::Rgb(0, 200, 200),
+                            3 => Color::Rgb(0, 150, 150),
+                            _ => Color::Cyan,
+                        };
+                        spans.push(Span::styled(
+                            *part,
+                            Style::default().fg(color).add_modifier(Modifier::BOLD),
+                        ));
+                    } else if part.contains("Media Organizer") {
+                        spans.push(Span::styled(
+                            *part,
+                            Style::default()
+                                .fg(Color::Rgb(150, 150, 150))
+                                .add_modifier(Modifier::ITALIC),
+                        ));
+                    } else {
+                        spans.push(Span::raw(*part));
+                    }
+
+                    if j < parts.len() - 1 {
+                        spans.push(Span::raw("  "));
+                    }
+                }
+
+                if i == 1 {
+                    // Add a space before the logo
+                    spans.insert(spans.len() - 2, Span::raw(" "));
+                }
+
+                Line::from(spans)
+            }
+            _ => Line::from(*line),
+        };
+
+        header_lines.push(styled_line);
+    }
+
+    // Add state indicator with icons
+    let state_text = match app.state {
+        AppState::Dashboard => ("📊", "Dashboard", Color::Green),
+        AppState::Settings => ("⚙️", "Settings", Color::Yellow),
+        AppState::Scanning => ("🔍", "Scanning...", Color::Cyan),
+        AppState::Organizing => ("📁", "Organizing...", Color::Blue),
+        AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
+        AppState::Search => ("🔎", "Search", Color::White),
+    };
+
+    // Create centered header block
+    let header_block = Block::default()
+        .borders(Borders::NONE)
+        .padding(Padding::zero());
+
+    let header_content = Paragraph::new(header_lines)
+        .block(header_block)
+        .alignment(Alignment::Center);
+
+    f.render_widget(header_content, area);
+
+    // Add current state indicator in the top right
+    let state_indicator = format!("{} {}", state_text.0, state_text.1);
+    let state_area = Rect {
+        x: area.x + area.width.saturating_sub(state_indicator.len() as u16 + 4),
+        y: area.y + 1,
+        width: state_indicator.len() as u16 + 2,
+        height: 1,
+    };
+
+    let state_widget = Paragraph::new(Line::from(vec![
+        Span::raw(" "),
+        Span::styled(
+            state_indicator,
             Style::default()
-                .fg(Color::Rgb(255, 255, 255))
-                .bg(Color::Rgb(0, 122, 204))
+                .fg(state_text.2)
                 .add_modifier(Modifier::BOLD),
-        )
-        .block(Block::default().borders(Borders::NONE));
+        ),
+        Span::raw(" "),
+    ]))
+    .style(Style::default().bg(Color::Rgb(30, 30, 30)));
 
-    f.render_widget(header, area);
+    f.render_widget(state_widget, state_area);
 }
 
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
-    let (status_text, status_color) = if let Some(error) = &app.error_message {
-        (format!(" ❌ {error} "), Color::Red)
-    } else if let Some(success) = &app.success_message {
-        (format!(" ✅ {success} "), Color::Green)
-    } else {
-        let mode_indicator = match app.input_mode {
-            crate::app::InputMode::Normal => "NORMAL",
-            crate::app::InputMode::Insert => "INSERT",
-        };
+    let chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage(33),
+            Constraint::Percentage(34),
+            Constraint::Percentage(33),
+        ])
+        .split(area);
 
-        (
-            format!(" {mode_indicator} | Press '?' for help | Tab: Navigate | Q: Quit "),
-            Color::Rgb(100, 100, 100),
-        )
+    // Left section - shortcuts
+    let shortcuts = match app.state {
+        AppState::Dashboard => "q:Quit | ?:Help | Tab:Switch",
+        AppState::Settings => "q:Back | S:Save | R:Reset",
+        _ => "q:Quit | ?:Help",
     };
 
-    let status = Paragraph::new(status_text)
-        .style(Style::default().fg(status_color).bg(Color::Rgb(40, 40, 40)))
-        .block(Block::default().borders(Borders::NONE));
+    let left = Paragraph::new(shortcuts)
+        .style(Style::default().fg(Color::Rgb(150, 150, 150)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
+        );
 
-    f.render_widget(status, area);
-}
+    // Center section - messages
+    let center_content = if let Some(error) = &app.error_message {
+        vec![Line::from(vec![
+            Span::styled("❌ ", Style::default().fg(Color::Red)),
+            Span::styled(error, Style::default().fg(Color::Red)),
+        ])]
+    } else if let Some(success) = &app.success_message {
+        vec![Line::from(vec![
+            Span::styled("✅ ", Style::default().fg(Color::Green)),
+            Span::styled(success, Style::default().fg(Color::Green)),
+        ])]
+    } else {
+        vec![Line::from(vec![Span::styled(
+            "Ready",
+            Style::default().fg(Color::Rgb(100, 100, 100)),
+        )])]
+    };
 
-fn draw_duplicate_review(f: &mut Frame, area: Rect, _app: &App) {
-    let content = Paragraph::new("Duplicate file review - Coming soon").block(
-        Block::default()
-            .title(" 🔍 Duplicates ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Yellow)),
+    let center = Paragraph::new(center_content)
+        .alignment(Alignment::Center)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
+        );
+
+    // Right section - stats
+    let stats = format!(
+        "Files: {} | Tab: {}/{}",
+        app.statistics.total_files,
+        app.selected_tab + 1,
+        app.get_tab_count()
     );
 
-    f.render_widget(content, area);
+    let right = Paragraph::new(stats)
+        .alignment(Alignment::Right)
+        .style(Style::default().fg(Color::Rgb(150, 150, 150)))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
+        );
+
+    f.render_widget(left, chunks[0]);
+    f.render_widget(center, chunks[1]);
+    f.render_widget(right, chunks[2]);
 }
 
 fn draw_help_overlay(f: &mut Frame) {
-    let area = centered_rect(70, 80, f.area());
+    let area = centered_rect(80, 80, f.area());
+    f.render_widget(Clear, area);
 
     let help_text = vec![
-        "",
-        " Navigation:",
-        "   Tab/Shift+Tab  Navigate between tabs",
-        "   ↑/↓ or j/k     Move selection up/down",
-        "   PgUp/PgDn      Page up/down",
-        "   Enter          Select/Edit",
-        "",
-        " Global Shortcuts:",
-        "   ?/F1           Toggle this help",
-        "   q/Esc          Quit (or exit mode)",
-        "   d              Go to Dashboard",
-        "   s              Go to Settings",
-        "   f              Search/Filter files",
-        "   u              Review duplicates",
-        "",
-        " Actions:",
-        "   r              Scan/Rescan files",
-        "   o              Organize files",
-        "   Delete         Delete selected file",
-        "",
-        " Search Mode:",
-        "   Type to filter files",
-        "   Enter to apply, Esc to cancel",
-        "",
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "🖼️  VisualVault Help",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Navigation",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Tab        - Next tab"),
+        Line::from("  Shift+Tab  - Previous tab"),
+        Line::from("  ↑/↓        - Navigate items"),
+        Line::from("  PgUp/PgDn  - Navigate pages"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Actions",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  r          - Scan for files"),
+        Line::from("  o          - Organize files"),
+        Line::from("  f          - Search files"),
+        Line::from("  u          - Review duplicates"),
+        Line::from("  s          - Open settings"),
+        Line::from("  d          - Go to dashboard"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "General",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  ?/F1       - Toggle this help"),
+        Line::from("  q          - Quit application"),
+        Line::from("  Esc        - Cancel/Go back"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Press any key to close",
+            Style::default()
+                .fg(Color::Rgb(150, 150, 150))
+                .add_modifier(Modifier::ITALIC),
+        )]),
     ];
 
-    let help = Paragraph::new(help_text.join("\n"))
+    let help = Paragraph::new(help_text)
         .block(
             Block::default()
-                .title(" ❓ Help ")
+                .title(" Help ")
+                .title_style(
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD),
+                )
                 .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Cyan))
-                .style(Style::default().bg(Color::Rgb(20, 20, 20))),
+                .border_style(Style::default().fg(Color::Cyan)),
         )
-        .style(Style::default().fg(Color::White));
+        .style(Style::default().bg(Color::Rgb(20, 20, 30)));
 
-    f.render_widget(Clear, area);
     f.render_widget(help, area);
 }
 

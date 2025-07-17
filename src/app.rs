@@ -442,7 +442,7 @@ impl App {
             AppState::Scanning => {
                 if self.scanner.is_complete().await {
                     let count = self.file_manager.read().await.get_file_count();
-                    self.success_message = Some(format!("Scan complete: {} files found", count));
+                    self.success_message = Some(format!("Scan complete: {count} files found"));
                     self.state = AppState::Dashboard;
                     self.update_statistics().await?;
                 }
@@ -600,7 +600,7 @@ impl App {
         Ok(())
     }
 
-    fn get_tab_count(&self) -> usize {
+    pub fn get_tab_count(&self) -> usize {
         match self.state {
             AppState::Dashboard => 4,
             AppState::Settings => 3,
