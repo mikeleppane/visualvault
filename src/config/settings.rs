@@ -1,0 +1,158 @@
+use color_eyre::eyre::Result;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub source_folder: Option<PathBuf>,
+    pub destination_folder: Option<PathBuf>,
+    #[serde(default = "default_recurse_subfolders")]
+    pub recurse_subfolders: bool,
+    #[serde(default)]
+    pub verbose_output: bool,
+    #[serde(default = "default_organize_by")]
+    pub organize_by: String,
+    #[serde(default)]
+    pub separate_videos: bool,
+    #[serde(default)]
+    pub dry_run: bool,
+    #[serde(default)]
+    pub keep_original_structure: bool,
+    #[serde(default = "default_rename_duplicates")]
+    pub rename_duplicates: bool,
+    #[serde(default = "default_lowercase_extensions")]
+    pub lowercase_extensions: bool,
+    #[serde(default = "default_preserve_metadata")]
+    pub preserve_metadata: bool,
+    #[serde(default)]
+    pub create_thumbnails: bool,
+    #[serde(default = "default_worker_threads")]
+    pub worker_threads: usize,
+    #[serde(default = "default_buffer_size")]
+    pub buffer_size: usize,
+    #[serde(default = "default_enable_cache")]
+    pub enable_cache: bool,
+    #[serde(default = "default_parallel_processing")]
+    pub parallel_processing: bool,
+    #[serde(default)]
+    pub skip_hidden_files: bool,
+    #[serde(default)]
+    pub optimize_for_ssd: bool,
+}
+
+// Default value functions for serde
+fn default_recurse_subfolders() -> bool {
+    true
+}
+fn default_organize_by() -> String {
+    "monthly".to_string()
+}
+fn default_rename_duplicates() -> bool {
+    true
+}
+fn default_lowercase_extensions() -> bool {
+    true
+}
+fn default_preserve_metadata() -> bool {
+    true
+}
+fn default_worker_threads() -> usize {
+    num_cpus::get()
+}
+fn default_buffer_size() -> usize {
+    8 * 1024 * 1024
+}
+fn default_enable_cache() -> bool {
+    true
+}
+fn default_parallel_processing() -> bool {
+    true
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            source_folder: None,
+            destination_folder: None,
+            recurse_subfolders: default_recurse_subfolders(),
+            verbose_output: false,
+            organize_by: default_organize_by(),
+            separate_videos: false,
+            dry_run: false,
+            keep_original_structure: false,
+            rename_duplicates: default_rename_duplicates(),
+            lowercase_extensions: default_lowercase_extensions(),
+            preserve_metadata: default_preserve_metadata(),
+            create_thumbnails: false,
+            worker_threads: default_worker_threads(),
+            buffer_size: default_buffer_size(),
+            enable_cache: default_enable_cache(),
+            parallel_processing: default_parallel_processing(),
+            skip_hidden_files: false,
+            optimize_for_ssd: false,
+        }
+    }
+}
+
+impl Settings {
+    pub async fn load() -> Result<Self> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        let config_path = config_dir.join("visualvault").join("config.toml");
+
+        if config_path.exists() {
+            let content = tokio::fs::read_to_string(&config_path).await?;
+            let settings: Settings = toml::from_str(&content)?;
+            Ok(settings)
+        } else {
+            Ok(Self::default())
+        }
+    }
+
+    pub async fn save(&self) -> Result<()> {
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        let app_config_dir = config_dir.join("visualvault");
+
+        // Create directory if it doesn't exist
+        tokio::fs::create_dir_all(&app_config_dir).await?;
+
+        let config_path = app_config_dir.join("config.toml");
+        let content = toml::to_string_pretty(self)?;
+        tokio::fs::write(&config_path, content).await?;
+
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OrganizationMode {
+    Yearly,
+    Monthly,
+    Daily,
+    ByType,
+    TypeAndDate,
+}
+
+impl OrganizationMode {
+    pub fn from_string(s: &str) -> Self {
+        match s {
+            "yearly" => Self::Yearly,
+            "monthly" => Self::Monthly,
+            "daily" => Self::Daily,
+            "type" => Self::ByType,
+            "type-date" => Self::TypeAndDate,
+            _ => Self::Monthly,
+        }
+    }
+
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            Self::Yearly => "yearly",
+            Self::Monthly => "monthly",
+            Self::Daily => "daily",
+            Self::ByType => "type",
+            Self::TypeAndDate => "type-date",
+        }
+    }
+}
