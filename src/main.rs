@@ -9,15 +9,12 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
 };
 use std::{
-    fs::File,
-    io,
+    io::{self, IsTerminal},
     sync::Arc,
     time::{Duration, Instant},
 };
 use tokio::sync::RwLock;
 use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 mod app;
 mod config;
@@ -81,6 +78,12 @@ fn setup_logging() -> Result<()> {
 
 async fn run() -> Result<()> {
     // Setup terminal
+
+    if !std::io::stdout().is_terminal() {
+        eprintln!("Error: This application must be run in a terminal");
+        std::process::exit(1);
+    }
+
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
@@ -132,19 +135,19 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: Arc<RwLock<App>>) 
                     let mut app = app.write().await;
 
                     match key.code {
-                        KeyCode::Char('q') | KeyCode::Esc => {
-                            if app.should_quit() {
-                                info!("User requested quit");
-                                return Ok(());
-                            }
-                        }
                         KeyCode::Char('c')
                             if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
                         {
                             info!("User forced quit");
                             return Ok(());
                         }
-                        _ => app.on_key(key).await?,
+                        _ => {
+                            app.on_key(key).await?;
+                            if app.should_quit {
+                                info!("User requested quit");
+                                return Ok(());
+                            }
+                        }
                     }
                 }
             }

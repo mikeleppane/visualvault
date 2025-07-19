@@ -5,14 +5,16 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, Clear, Padding, Paragraph},
 };
+use tracing::info;
 
 use crate::app::{App, AppState};
+use crate::utils::format_bytes;
 
 mod dashboard;
-mod settings;
-/* mod progress;
+mod file_details;
+mod progress;
 mod search;
-mod settings; */
+mod settings;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let chunks = Layout::default()
@@ -32,6 +34,22 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     match app.state {
         AppState::Dashboard => dashboard::draw(f, chunks[1], app),
         AppState::Settings => settings::draw(f, chunks[1], app),
+        AppState::Search => search::draw(f, chunks[1], app),
+        AppState::FileDetails(file_idx) => {
+            // Draw dashboard in background
+            dashboard::draw(f, chunks[1], app);
+            // Draw file details modal on top
+            if let Some(file) = app.cached_files.get(file_idx) {
+                file_details::draw_modal(f, file);
+            }
+        }
+        AppState::Scanning | AppState::Organizing => {
+            info!("Drawing progress overlay for state: {:?}", app.statistics);
+            // Draw dashboard in background
+            dashboard::draw(f, chunks[1], app);
+            // Draw progress overlay on top
+            progress::draw_progress_overlay(f, app);
+        }
         _ => {
             // Placeholder for other states
             let content = Paragraph::new("Content goes here")
@@ -135,6 +153,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         AppState::Organizing => ("📁", "Organizing...", Color::Blue),
         AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
         AppState::Search => ("🔎", "Search", Color::White),
+        AppState::FileDetails(_) => ("📄", "File Details", Color::White),
     };
 
     // Create centered header block
@@ -186,6 +205,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let shortcuts = match app.state {
         AppState::Dashboard => "q:Quit | ?:Help | Tab:Switch",
         AppState::Settings => "q:Back | S:Save | R:Reset",
+        AppState::FileDetails(_) => "ESC/q:Close | ↑↓:Navigate",
         _ => "q:Quit | ?:Help",
     };
 
@@ -197,7 +217,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
         );
 
-    // Center section - messages
+    // Center section - messages or current operation
     let center_content = if let Some(error) = &app.error_message {
         vec![Line::from(vec![
             Span::styled("❌ ", Style::default().fg(Color::Red)),
@@ -209,10 +229,53 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(success, Style::default().fg(Color::Green)),
         ])]
     } else {
-        vec![Line::from(vec![Span::styled(
-            "Ready",
-            Style::default().fg(Color::Rgb(100, 100, 100)),
-        )])]
+        // Show state-specific status
+        match app.state {
+            AppState::FileDetails(idx) => {
+                if let Some(file) = app.cached_files.get(idx) {
+                    vec![Line::from(vec![
+                        Span::styled("📋 ", Style::default().fg(Color::Cyan)),
+                        Span::styled(
+                            format!("Viewing: {}", file.name),
+                            Style::default().fg(Color::Cyan),
+                        ),
+                    ])]
+                } else {
+                    vec![Line::from(vec![Span::styled(
+                        "Ready",
+                        Style::default().fg(Color::Rgb(100, 100, 100)),
+                    )])]
+                }
+            }
+            AppState::Scanning => {
+                vec![Line::from(vec![
+                    Span::styled(
+                        "⟳ ",
+                        Style::default()
+                            .fg(Color::Blue)
+                            .add_modifier(Modifier::SLOW_BLINK),
+                    ),
+                    Span::styled("Scanning files...", Style::default().fg(Color::Blue)),
+                ])]
+            }
+            AppState::Organizing => {
+                vec![Line::from(vec![
+                    Span::styled(
+                        "⟳ ",
+                        Style::default()
+                            .fg(Color::Blue)
+                            .add_modifier(Modifier::SLOW_BLINK),
+                    ),
+                    Span::styled("Organizing files...", Style::default().fg(Color::Blue)),
+                ])]
+            }
+            _ => {
+                vec![Line::from(vec![Span::styled(
+                    "Ready",
+                    Style::default().fg(Color::Rgb(100, 100, 100)),
+                )])]
+            }
+        }
     };
 
     let center = Paragraph::new(center_content)
@@ -224,12 +287,35 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
         );
 
     // Right section - stats
-    let stats = format!(
-        "Files: {} | Tab: {}/{}",
-        app.statistics.total_files,
-        app.selected_tab + 1,
-        app.get_tab_count()
-    );
+    let stats = match app.state {
+        AppState::FileDetails(idx) => {
+            // Show file-specific stats when viewing details
+            if let Some(file) = app.cached_files.get(idx) {
+                format!(
+                    "{} | {} | File {}/{}",
+                    file.file_type,
+                    format_bytes(file.size),
+                    idx + 1,
+                    app.cached_files.len()
+                )
+            } else {
+                format!(
+                    "Files: {} | Tab: {}/{}",
+                    app.statistics.total_files,
+                    app.selected_tab + 1,
+                    app.get_tab_count()
+                )
+            }
+        }
+        _ => {
+            format!(
+                "Files: {} | Tab: {}/{}",
+                app.statistics.total_files,
+                app.selected_tab + 1,
+                app.get_tab_count()
+            )
+        }
+    };
 
     let right = Paragraph::new(stats)
         .alignment(Alignment::Right)
@@ -278,7 +364,7 @@ fn draw_help_overlay(f: &mut Frame) {
         Line::from("  r          - Scan for files"),
         Line::from("  o          - Organize files"),
         Line::from("  f          - Search files"),
-        Line::from("  u          - Review duplicates"),
+        Line::from("  u          - Update target/destination folder stats"),
         Line::from("  s          - Open settings"),
         Line::from("  d          - Go to dashboard"),
         Line::from(""),

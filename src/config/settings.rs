@@ -1,6 +1,6 @@
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf, str::FromStr};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
@@ -134,25 +134,35 @@ pub enum OrganizationMode {
     TypeAndDate,
 }
 
-impl OrganizationMode {
-    pub fn from_string(s: &str) -> Self {
-        match s {
-            "yearly" => Self::Yearly,
-            "monthly" => Self::Monthly,
-            "daily" => Self::Daily,
-            "type" => Self::ByType,
-            "type-date" => Self::TypeAndDate,
-            _ => Self::Monthly,
+impl FromStr for OrganizationMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "yearly" => Ok(Self::Yearly),
+            "monthly" => Ok(Self::Monthly),
+            "daily" => Ok(Self::Daily),
+            "type" => Ok(Self::ByType),
+            "type-date" => Ok(Self::TypeAndDate),
+            _ => Err(format!("Unknown organization mode: {s}")),
         }
     }
+}
 
-    pub fn to_string(&self) -> &'static str {
+impl Default for OrganizationMode {
+    fn default() -> Self {
+        Self::Monthly
+    }
+}
+
+impl fmt::Display for OrganizationMode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Yearly => "yearly",
-            Self::Monthly => "monthly",
-            Self::Daily => "daily",
-            Self::ByType => "type",
-            Self::TypeAndDate => "type-date",
+            Self::Yearly => write!(f, "yearly"),
+            Self::Monthly => write!(f, "monthly"),
+            Self::Daily => write!(f, "daily"),
+            Self::ByType => write!(f, "type"),
+            Self::TypeAndDate => write!(f, "type-date"),
         }
     }
 }

@@ -3,7 +3,7 @@ use chrono::{DateTime, Local};
 use std::collections::HashMap;
 use std::path::PathBuf;
 
-use crate::models::MediaFile;
+use crate::models::{FileType, MediaFile};
 
 #[derive(Debug, Clone, Default)]
 pub struct Statistics {
@@ -18,6 +18,8 @@ pub struct Statistics {
     pub files_by_extension: HashMap<String, usize>,
     pub largest_files: Vec<(PathBuf, u64)>,
     pub most_recent_files: Vec<(PathBuf, DateTime<Local>)>,
+    pub duplicate_size: u64, // Total size of duplicate files (excluding one copy of each)
+    pub file_types: HashMap<FileType, usize>,
 }
 
 impl Statistics {
@@ -84,5 +86,46 @@ impl Statistics {
 
     pub fn update_organized_size(&mut self, size: u64) {
         self.organized_size = size;
+    }
+
+    pub fn update_from_scan_results(
+        &mut self,
+        files: &[MediaFile],
+        duplicates: &HashMap<String, Vec<MediaFile>>,
+    ) {
+        // Reset statistics
+        self.total_files = files.len();
+        self.total_size = files.iter().map(|f| f.size).sum();
+        self.duplicate_count = 0;
+        self.duplicate_size = 0;
+        self.file_types.clear();
+        self.media_types.clear();
+        self.type_sizes.clear();
+
+        // Count file types
+        for file in files {
+            *self.file_types.entry(file.file_type.clone()).or_insert(0) += 1;
+            *self
+                .media_types
+                .entry(file.file_type.to_string())
+                .or_insert(0) += 1;
+            *self
+                .type_sizes
+                .entry(file.file_type.to_string())
+                .or_insert(0) += file.size;
+        }
+
+        // Count duplicates and calculate duplicate size
+        for (_, group) in duplicates {
+            if group.len() > 1 {
+                // Count all duplicates except one (the one we'd keep)
+                self.duplicate_count += group.len() - 1;
+
+                // Calculate size of duplicates (excluding one copy)
+                if let Some(file_size) = group.first().map(|f| f.size) {
+                    self.duplicate_size += file_size * (group.len() - 1) as u64;
+                }
+            }
+        }
     }
 }

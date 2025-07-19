@@ -10,10 +10,10 @@ pub fn format_duration(seconds: f64) -> String {
     let secs = (seconds % 60.0) as u32;
 
     if hours > 0 {
-        format!("{}h {}m {}s", hours, minutes, secs)
+        format!("{hours}h {minutes}m {secs}s")
     } else if minutes > 0 {
-        format!("{}m {}s", minutes, secs)
+        format!("{minutes}m {secs}s")
     } else {
-        format!("{}s", secs)
+        format!("{secs}s")
     }
 }

@@ -525,7 +525,7 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(buffer_size, chunks[1]);
 
     // Performance options
-    let perf_options = vec![
+    let perf_options = [
         (
             settings.enable_cache,
             "Enable file cache",
@@ -740,12 +740,12 @@ fn get_preview_path(settings: &crate::config::Settings, filename: &str, file_typ
     };
 
     let path = match settings.organize_by.as_str() {
-        "yearly" => format!("{}/2024/{}", base, filename),
-        "monthly" => format!("{}/2024/03-March/{}", base, filename),
-        "daily" => format!("{}/2024/03/15/{}", base, filename),
+        "yearly" => format!("{base}/2024/{filename}"),
+        "monthly" => format!("{base}/2024/03-March/{filename}"),
+        "daily" => format!("{base}/2024/03/15/{filename}"),
         "type" => format!("{}/{}/{}", base, capitalize_type(file_type), filename),
         "type-date" => format!("{}/{}/2024/{}", base, capitalize_type(file_type), filename),
-        _ => format!("{}/{}", base, filename),
+        _ => format!("{base}/{filename}"),
     };
 
     if settings.separate_videos && file_type == "video" {
