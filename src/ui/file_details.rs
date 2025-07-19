@@ -3,7 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Padding, Paragraph, Row, Table},
+    widgets::{Block, Borders, Clear, Paragraph, Row, Table},
 };
 use tracing::info;
 

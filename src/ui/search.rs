@@ -3,11 +3,11 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Clear, List, ListItem, Paragraph, Row, Table},
+    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
 };
 
 use crate::app::{App, InputMode};
-use crate::models::{FileType, MediaFile};
+use crate::models::FileType;
 use crate::utils::format_bytes;
 
 pub fn draw(f: &mut Frame, area: Rect, app: &App) {

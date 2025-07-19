@@ -50,19 +50,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             // Draw progress overlay on top
             progress::draw_progress_overlay(f, app);
         }
-        _ => {
-            // Placeholder for other states
-            let content = Paragraph::new("Content goes here")
-                .block(
-                    Block::default()
-                        .borders(Borders::ALL)
-                        .title(" Main Content "),
-                )
-                .style(Style::default().fg(Color::White));
-
-            f.render_widget(Clear, chunks[1]);
-            f.render_widget(content, chunks[1]);
-        }
     }
 
     // Draw status bar
@@ -151,7 +138,6 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         AppState::Settings => ("⚙️", "Settings", Color::Yellow),
         AppState::Scanning => ("🔍", "Scanning...", Color::Cyan),
         AppState::Organizing => ("📁", "Organizing...", Color::Blue),
-        AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
         AppState::Search => ("🔎", "Search", Color::White),
         AppState::FileDetails(_) => ("📄", "File Details", Color::White),
     };
@@ -159,7 +145,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     // Create centered header block
     let header_block = Block::default()
         .borders(Borders::NONE)
-        .padding(Padding::zero());
+        .padding(Padding::ZERO);
 
     let header_content = Paragraph::new(header_lines)
         .block(header_block)

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 use tokio::fs;
 use tokio::sync::{Mutex, RwLock};
-use tracing::{error, info};
+use tracing::error;
 
 use crate::app::OrganizeResult;
 use crate::config::settings::OrganizationMode;
@@ -56,16 +56,15 @@ impl FileOrganizer {
                             // Already processed one file from this group, skip this one
                             skipped_duplicates += 1;
                             continue;
-                        } else {
-                            // First file from this group, process it
-                            processed_hashes.insert(hash.clone());
-                            // Choose the oldest file (by modified date) or first in list
-                            let chosen_file = duplicate_group
-                                .iter()
-                                .min_by_key(|f| f.modified)
-                                .unwrap_or(&file);
-                            files_to_organize.push(chosen_file.clone());
                         }
+                        // First file from this group, process it
+                        processed_hashes.insert(hash.clone());
+                        // Choose the oldest file (by modified date) or first in list
+                        let chosen_file = duplicate_group
+                            .iter()
+                            .min_by_key(|f| f.modified)
+                            .unwrap_or(&file);
+                        files_to_organize.push(chosen_file.clone());
                     } else {
                         // Not a duplicate, process normally
                         files_to_organize.push(file);
@@ -114,59 +113,12 @@ impl FileOrganizer {
         Ok(OrganizeResult {
             files_organized: moved_files,
             files_total,
-            destination: dest_folder.to_path_buf(),
+            destination: dest_folder.clone(),
             success: errors.is_empty(),
             timestamp: chrono::Local::now(),
             skipped_duplicates,
             errors,
         })
-    }
-
-    pub async fn organize_files(
-        &self,
-        files: Vec<MediaFile>,
-        settings: Settings,
-        progress: Arc<RwLock<Progress>>,
-    ) -> Result<usize> {
-        let mut organizing = self.is_organizing.lock().await;
-        *organizing = true;
-        drop(organizing);
-
-        let destination = settings
-            .destination_folder
-            .as_ref()
-            .ok_or_else(|| color_eyre::eyre::eyre!("No destination folder set"))?;
-
-        info!("Starting organization of {} files", files.len());
-
-        let total = files.len();
-        progress.write().await.set_total(total);
-
-        let mut organized_count = 0;
-
-        for (idx, file) in files.iter().enumerate() {
-            match self.organize_file(file, destination, &settings).await {
-                Ok(_) => organized_count += 1,
-                Err(e) => {
-                    error!("Failed to organize {}: {}", file.path.display(), e);
-                }
-            }
-
-            progress.write().await.set_current(idx + 1);
-            progress
-                .write()
-                .await
-                .set_message(format!("Organized {} of {} files", idx + 1, total));
-        }
-
-        let mut organizing = self.is_organizing.lock().await;
-        *organizing = false;
-
-        let mut result = self.result.lock().await;
-        *result = Some(Ok(organized_count));
-
-        info!("Organization complete: {} files organized", organized_count);
-        Ok(organized_count)
     }
 
     async fn organize_file(
@@ -175,7 +127,7 @@ impl FileOrganizer {
         destination: &Path,
         settings: &Settings,
     ) -> Result<PathBuf> {
-        let target_dir = self.determine_target_directory(file, destination, settings)?;
+        let target_dir = Self::determine_target_directory(file, destination, settings)?;
 
         // Create target directory if it doesn't exist
         fs::create_dir_all(&target_dir).await?;
@@ -184,7 +136,7 @@ impl FileOrganizer {
         let file_name = if settings.rename_duplicates {
             // Check if file exists in target directory
             if target_dir.join(&file.name).exists() {
-                self.generate_unique_name(&target_dir, &file.name)?
+                Self::generate_unique_name(&target_dir, &file.name)?
             } else {
                 file.name.clone()
             }
@@ -202,10 +154,10 @@ impl FileOrganizer {
                 .extension()
                 .and_then(|e| e.to_str())
                 .unwrap_or("");
-            if !ext.is_empty() {
-                format!("{}.{}", stem, ext.to_lowercase())
-            } else {
+            if ext.is_empty() {
                 file_name
+            } else {
+                format!("{}.{}", stem, ext.to_lowercase())
             }
         } else {
             file_name
@@ -220,7 +172,6 @@ impl FileOrganizer {
     }
 
     fn determine_target_directory(
-        &self,
         file: &MediaFile,
         destination: &Path,
         settings: &Settings,
@@ -240,7 +191,7 @@ impl FileOrganizer {
                 path.push(file.modified.format("%m-%B").to_string());
             }
             Ok(OrganizationMode::ByType) => {
-                path.push(self.get_type_folder(file, settings));
+                path.push(Self::get_type_folder(file, settings));
             }
             Ok(OrganizationMode::Daily) => {
                 path.push(file.modified.format("%Y").to_string());
@@ -249,7 +200,7 @@ impl FileOrganizer {
             }
             Ok(OrganizationMode::TypeAndDate) => {
                 // Combine type and date
-                path.push(self.get_type_folder(file, settings));
+                path.push(Self::get_type_folder(file, settings));
                 path.push(file.modified.format("%Y").to_string());
                 path.push(file.modified.format("%m-%B").to_string());
                 path.push(file.modified.format("%d-%A").to_string());
@@ -262,7 +213,7 @@ impl FileOrganizer {
         Ok(path)
     }
 
-    fn get_type_folder(&self, file: &MediaFile, settings: &Settings) -> String {
+    fn get_type_folder(file: &MediaFile, settings: &Settings) -> String {
         match file.file_type {
             FileType::Image => "Images".to_string(),
             FileType::Video => {
@@ -277,7 +228,7 @@ impl FileOrganizer {
         }
     }
 
-    fn generate_unique_name(&self, dir: &Path, original_name: &str) -> Result<String> {
+    fn generate_unique_name(dir: &Path, original_name: &str) -> Result<String> {
         let mut counter = 1;
         let stem = Path::new(original_name)
             .file_stem()
@@ -297,31 +248,6 @@ impl FileOrganizer {
 
             if !dir.join(&new_name).exists() {
                 return Ok(new_name);
-            }
-
-            counter += 1;
-            if counter > 999 {
-                return Err(color_eyre::eyre::eyre!("Too many duplicate filenames"));
-            }
-        }
-    }
-
-    async fn handle_existing_file(&self, path: &Path) -> Result<PathBuf> {
-        let mut counter = 1;
-        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-        let parent = path.parent().unwrap_or(Path::new(""));
-
-        loop {
-            let new_name = if extension.is_empty() {
-                format!("{stem} ({counter})")
-            } else {
-                format!("{stem} ({counter}).{extension}")
-            };
-
-            let new_path = parent.join(new_name);
-            if !new_path.exists() {
-                return Ok(new_path);
             }
 
             counter += 1;

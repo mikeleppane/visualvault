@@ -5,15 +5,16 @@ use std::{
     collections::HashMap,
     path::{Path, PathBuf},
     sync::Arc,
-    time::Instant,
 };
 use tokio::sync::RwLock;
 use tracing::{error, info};
 use walkdir::WalkDir;
 
+use crate::models::Statistics;
+
 use crate::{
     config::Settings,
-    core::{FileManager, FileOrganizer, Scanner, Statistics},
+    core::{FileManager, FileOrganizer, Scanner},
     models::{FileType, ImageMetadata, MediaFile, MediaMetadata},
     utils::{FolderStats, Progress},
 };
@@ -24,7 +25,6 @@ pub enum AppState {
     Settings,
     Scanning,
     Organizing,
-    DuplicateReview,
     Search,
     FileDetails(usize),
 }
@@ -78,9 +78,7 @@ pub struct App {
     pub last_scan_result: Option<ScanResult>,
     pub last_organize_result: Option<OrganizeResult>,
     pub should_quit: bool, // Add this field to control quitting
-    pub duplicate_groups: Option<Vec<Vec<MediaFile>>>, // Add this field
-    pub selected_duplicate_group: usize, // Add this for navigating duplicate groups
-    pub selected_duplicate_file: usize,
+    pub duplicate_groups: Option<Vec<Vec<MediaFile>>>, // Add this field// Add this for navigating duplicate groups
     pub folder_stats_cache: HashMap<PathBuf, FolderStats>,
 }
 
@@ -129,8 +127,6 @@ impl App {
             last_organize_result: None,
             should_quit: false,
             duplicate_groups: None,
-            selected_duplicate_group: 0,
-            selected_duplicate_file: 0,
             folder_stats_cache: HashMap::new(),
         })
     }
@@ -143,7 +139,7 @@ impl App {
 
     pub async fn on_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.state == AppState::Search {
-            return self.handle_search_keys(key).await;
+            return self.handle_search_keys(key);
         }
 
         match self.input_mode {
@@ -169,7 +165,7 @@ impl App {
             },
             AppState::Search => {
                 // For Search state, delegate ALL key handling to handle_search_keys
-                return self.handle_search_keys(key).await;
+                return self.handle_search_keys(key);
             }
             _ => {}
         }
@@ -227,7 +223,7 @@ impl App {
                 // Update folder stats
                 self.update_folder_stats().await?;
             }
-            KeyCode::Char('f') | KeyCode::Char('/') => {
+            KeyCode::Char('f' | '/') => {
                 // Switch to search mode
                 self.state = AppState::Search;
                 self.search_input.clear();
@@ -240,7 +236,6 @@ impl App {
                 // Handle state-specific keys
                 match self.state {
                     AppState::Settings => self.handle_settings_keys(key).await?,
-                    AppState::DuplicateReview => self.handle_duplicate_keys(key).await?,
                     AppState::Dashboard => self.handle_dashboard_keys(key).await?,
                     _ => {}
                 }
@@ -307,7 +302,7 @@ impl App {
                         0 => self.start_editing_field(EditingField::SourceFolder).await?,
                         1 => {
                             self.start_editing_field(EditingField::DestinationFolder)
-                                .await?
+                                .await?;
                         }
                         _ => {}
                     },
@@ -362,7 +357,7 @@ impl App {
                     KeyCode::Enter => match self.selected_setting {
                         0 => {
                             self.start_editing_field(EditingField::WorkerThreads)
-                                .await?
+                                .await?;
                         }
                         1 => self.start_editing_field(EditingField::BufferSize).await?,
                         _ => {}
@@ -380,10 +375,10 @@ impl App {
 
         // Common keys for all tabs
         match key.code {
-            KeyCode::Char('s') | KeyCode::Char('S') => {
+            KeyCode::Char('s' | 'S') => {
                 self.save_settings().await?;
             }
-            KeyCode::Char('r') | KeyCode::Char('R') => {
+            KeyCode::Char('r' | 'R') => {
                 self.reset_settings().await?;
             }
             _ => {}
@@ -393,18 +388,18 @@ impl App {
     }
 
     async fn change_organization_mode(&mut self, mode_index: usize) -> Result<()> {
-        let modes = vec!["yearly", "monthly", "daily", "type", "type-date"];
+        let modes = ["yearly", "monthly", "daily", "type", "type-date"];
 
         if let Some(mode) = modes.get(mode_index) {
             {
                 let mut settings = self.settings.write().await;
-                settings.organize_by = mode.to_string();
+                settings.organize_by = (*mode).to_string();
             }
 
             // Update the cache
             self.update_settings_cache().await?;
 
-            self.success_message = Some(format!("Organization mode changed to: {}", mode));
+            self.success_message = Some(format!("Organization mode changed to: {mode}"));
         }
 
         Ok(())
@@ -506,16 +501,16 @@ impl App {
         if self.selected_tab == 1 {
             match key.code {
                 KeyCode::Up => {
-                    self.move_selection_up().await;
+                    self.move_selection_up();
                 }
                 KeyCode::Down => {
-                    self.move_selection_down().await;
+                    self.move_selection_down();
                 }
                 KeyCode::PageUp => {
-                    self.page_up().await;
+                    self.page_up();
                 }
                 KeyCode::PageDown => {
-                    self.page_down().await;
+                    self.page_down();
                 }
                 KeyCode::Home => {
                     self.selected_file_index = 0;
@@ -640,7 +635,7 @@ impl App {
         Ok(metadata)
     }
 
-    async fn handle_search_keys(&mut self, key: KeyEvent) -> Result<()> {
+    fn handle_search_keys(&mut self, key: KeyEvent) -> Result<()> {
         use crossterm::event::KeyCode;
 
         match self.input_mode {
@@ -680,25 +675,6 @@ impl App {
                             }
                         }
                     }
-                    KeyCode::Enter => {
-                        // When in normal mode and results exist, open file details
-                        if !self.search_results.is_empty()
-                            && self.selected_file_index < self.search_results.len()
-                        {
-                            // Find the index of this file in cached_files
-                            if let Some(selected_file) =
-                                self.search_results.get(self.selected_file_index)
-                            {
-                                if let Some(idx) = self
-                                    .cached_files
-                                    .iter()
-                                    .position(|f| f.path == selected_file.path)
-                                {
-                                    self.state = AppState::FileDetails(idx);
-                                }
-                            }
-                        }
-                    }
                     _ => {}
                 }
             }
@@ -706,7 +682,7 @@ impl App {
                 match key.code {
                     KeyCode::Enter => {
                         // Exit insert mode and perform final search
-                        self.perform_search().await?;
+                        self.perform_search()?;
                         self.input_mode = InputMode::Normal;
                     }
                     KeyCode::Esc => {
@@ -717,13 +693,13 @@ impl App {
                         // Add character to search input
                         self.search_input.push(c);
                         // Perform live search as user types
-                        self.perform_search().await?;
+                        self.perform_search()?;
                     }
                     KeyCode::Backspace => {
                         // Remove last character
                         self.search_input.pop();
                         // Update search results
-                        self.perform_search().await?;
+                        self.perform_search()?;
                     }
                     KeyCode::Delete => {
                         // Clear the entire search
@@ -739,7 +715,7 @@ impl App {
         Ok(())
     }
 
-    async fn perform_search(&mut self) -> Result<()> {
+    fn perform_search(&mut self) -> Result<()> {
         if self.search_input.is_empty() {
             self.search_results.clear();
             self.selected_file_index = 0;
@@ -767,11 +743,6 @@ impl App {
         self.selected_file_index = 0;
         self.scroll_offset = 0;
 
-        Ok(())
-    }
-
-    async fn handle_duplicate_keys(&mut self, _key: KeyEvent) -> Result<()> {
-        // Duplicate review-specific key handling
         Ok(())
     }
 
@@ -945,13 +916,6 @@ impl App {
         }
 
         Ok(())
-    }
-
-    pub fn should_quit(&self) -> bool {
-        if self.should_quit_on_q() {
-            return true;
-        }
-        false
     }
 
     async fn start_scan(&mut self) -> Result<()> {
@@ -1153,7 +1117,7 @@ impl App {
         Ok(())
     }
 
-    async fn move_selection_up(&mut self) {
+    fn move_selection_up(&mut self) {
         if self.selected_file_index > 0 {
             self.selected_file_index -= 1;
             if self.selected_file_index < self.scroll_offset {
@@ -1162,7 +1126,7 @@ impl App {
         }
     }
 
-    async fn move_selection_down(&mut self) {
+    fn move_selection_down(&mut self) {
         let file_count = self.cached_files.len();
         if self.selected_file_index < file_count.saturating_sub(1) {
             self.selected_file_index += 1;
@@ -1173,7 +1137,7 @@ impl App {
         }
     }
 
-    async fn page_up(&mut self) {
+    fn page_up(&mut self) {
         if self.selected_file_index >= 10 {
             self.selected_file_index -= 10;
         } else {
@@ -1184,48 +1148,13 @@ impl App {
         }
     }
 
-    async fn page_down(&mut self) {
+    fn page_down(&mut self) {
         let file_count = self.cached_files.len();
         self.selected_file_index =
             std::cmp::min(self.selected_file_index + 10, file_count.saturating_sub(1));
         // Adjust scroll if needed
         if self.selected_file_index >= self.scroll_offset + 20 {
             self.scroll_offset = self.selected_file_index.saturating_sub(19);
-        }
-    }
-
-    async fn handle_enter(&mut self) -> Result<()> {
-        // Handle enter key based on current state
-        Ok(())
-    }
-
-    async fn handle_delete(&mut self) -> Result<()> {
-        // Handle delete key for file operations
-        Ok(())
-    }
-
-    async fn apply_search(&mut self) -> Result<()> {
-        let mut file_manager = self.file_manager.write().await;
-        file_manager.filter_files(&self.search_input);
-        self.selected_file_index = 0;
-        self.scroll_offset = 0;
-        Ok(())
-    }
-
-    pub fn get_tab_count(&self) -> usize {
-        match self.state {
-            AppState::Dashboard => 4,
-            AppState::Settings => 3,
-            _ => 1,
-        }
-    }
-
-    pub fn should_quit_on_q(&self) -> bool {
-        match self.state {
-            AppState::Dashboard | AppState::Settings => true,
-            AppState::FileDetails(_) => false, // Don't quit from file details
-            AppState::Scanning | AppState::Organizing => false, // Don't quit during operations
-            _ => true,
         }
     }
 
@@ -1256,7 +1185,7 @@ impl App {
             let stats_result = std::thread::spawn(move || calculate_folder_stats_sync(&path_clone));
 
             // Get the result immediately (blocking, but walkdir is fast for reasonable directories)
-            if let Ok(Ok(stats)) = stats_result.join() {
+            if let Ok(stats) = stats_result.join() {
                 self.folder_stats_cache.insert(path, stats);
             }
         }
@@ -1294,17 +1223,21 @@ impl App {
                 tokio::task::spawn_blocking(move || calculate_folder_stats_sync(&path_clone)).await;
 
             match stats_result {
-                Ok(Ok(stats)) => {
+                Ok(stats) => {
                     self.folder_stats_cache.insert(path, stats);
                     update_count += 1;
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     error!("Failed to calculate stats for {:?}: {}", path, e);
                 }
-                Err(e) => {
-                    error!("Task failed for {:?}: {}", path, e);
-                }
             }
+        }
+
+        // Update success message
+        if update_count > 0 {
+            self.success_message = Some(format!("Updated statistics for {update_count} folder(s)"));
+        } else {
+            self.error_message = Some("No folders configured to update".to_string());
         }
 
         // Update success message
@@ -1317,15 +1250,17 @@ impl App {
         Ok(())
     }
 
-    // Call this when settings change
-    pub fn invalidate_folder_stats(&mut self) {
-        self.folder_stats_cache.clear();
+    pub fn get_tab_count(&self) -> usize {
+        match self.state {
+            AppState::Dashboard => 4,
+            AppState::Settings => 3,
+            _ => 1,
+        }
     }
 }
 
-fn calculate_folder_stats_sync(path: &std::path::Path) -> Result<FolderStats> {
+fn calculate_folder_stats_sync(path: &std::path::Path) -> FolderStats {
     let mut stats = FolderStats {
-        last_updated: Instant::now(),
         ..Default::default()
     };
 
@@ -1350,11 +1285,11 @@ fn calculate_folder_stats_sync(path: &std::path::Path) -> Result<FolderStats> {
                     }
                 }
             }
-            Err(_) => continue,
+            Err(_) => {}
         }
     }
 
-    Ok(stats)
+    stats
 }
 
 fn is_media_extension(ext: &str) -> bool {

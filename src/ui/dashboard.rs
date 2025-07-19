@@ -4,8 +4,7 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, Cell, Gauge, List, ListItem, Paragraph, Row,
-        Table, Tabs,
+        Bar, BarChart, BarGroup, Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs,
     },
 };
 use std::collections::HashMap;
@@ -87,7 +86,7 @@ fn draw_stats_cards(f: &mut Frame, area: Rect, app: &App) {
         .split(area);
 
     // Use the cached statistics from the app
-    let cards = vec![
+    let cards = [
         ("Total Files", stats.total_files.to_string(), Color::Cyan),
         ("Total Size", format_bytes(stats.total_size), Color::Green),
         (
@@ -772,7 +771,7 @@ fn draw_timeline_table(
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Gray)),
     )
-    .highlight_style(Style::default().add_modifier(Modifier::REVERSED))
+    .row_highlight_style(Style::default().add_modifier(Modifier::REVERSED))
     .highlight_symbol("> ");
 
     f.render_widget(table, area);

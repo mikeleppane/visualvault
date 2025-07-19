@@ -86,18 +86,10 @@ impl FileCache {
         self.entries.insert(path, entry);
     }
 
-    pub fn remove(&mut self, path: &Path) {
-        self.entries.remove(path);
-    }
-
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
     pub async fn remove_stale_entries(&mut self) {
         let mut to_remove = Vec::new();
 
-        for (path, _) in &self.entries {
+        for path in self.entries.keys() {
             if !tokio::fs::try_exists(path).await.unwrap_or(false) {
                 to_remove.push(path.clone());
             }
@@ -119,10 +111,6 @@ impl FileCache {
 
     pub fn len(&self) -> usize {
         self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 }
 

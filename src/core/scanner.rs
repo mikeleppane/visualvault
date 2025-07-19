@@ -27,13 +27,6 @@ pub struct Scanner {
 }
 
 impl Scanner {
-    pub fn new() -> Self {
-        Self {
-            is_scanning: Arc::new(Mutex::new(false)),
-            cache: Arc::new(Mutex::new(FileCache::new())),
-        }
-    }
-
     pub async fn with_cache() -> Result<Self> {
         let cache = FileCache::load().await.unwrap_or_else(|_| {
             tracing::warn!("Failed to load cache, starting fresh");
@@ -73,7 +66,7 @@ impl Scanner {
         let paths: Vec<PathBuf> = if recursive {
             WalkDir::new(path)
                 .into_iter()
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 .filter(|e| {
                     if settings.skip_hidden_files {
                         !is_hidden(e.path())
@@ -87,7 +80,7 @@ impl Scanner {
                 .collect()
         } else {
             std::fs::read_dir(path)?
-                .filter_map(|e| e.ok())
+                .filter_map(std::result::Result::ok)
                 .filter(|e| {
                     if settings.skip_hidden_files {
                         !is_hidden(&e.path())
@@ -95,7 +88,7 @@ impl Scanner {
                         true
                     }
                 })
-                .filter(|e| e.file_type().ok().map(|ft| ft.is_file()).unwrap_or(false))
+                .filter(|e| e.file_type().ok().is_some_and(|ft| ft.is_file()))
                 .map(|e| e.path())
                 .filter(|p| Self::is_media_file(p))
                 .collect()
@@ -120,7 +113,7 @@ impl Scanner {
         };
 
         // Save cache after processing
-        if let Ok(_) = self.cache.lock().await.save().await {
+        if (self.cache.lock().await.save().await).is_ok() {
             tracing::debug!("Cache saved successfully");
             // print also how many cache entries were saved
             //tracing::debug!("Cache entries saved: {}", self.cache.lock().await.len());
@@ -137,7 +130,7 @@ impl Scanner {
         let mut files = Vec::new();
 
         for (idx, path) in paths.iter().enumerate() {
-            match self.process_file_with_cache(&path).await {
+            match self.process_file_with_cache(path).await {
                 Ok(file) => {
                     files.push(file);
 
@@ -230,17 +223,15 @@ impl Scanner {
         let metadata = tokio::fs::metadata(path).await?;
         let size = metadata.len();
         let modified = Self::system_time_to_datetime(metadata.modified())
-            .map(|dt| dt.with_timezone(&Local))
-            .unwrap_or_else(Local::now);
+            .map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
         // Check cache first
         {
             let cache = self.cache.lock().await;
             if let Some(entry) = cache.get(path, size, &modified) {
-                let file_type = self.determine_file_type(&entry.extension);
+                let file_type = Self::determine_file_type(&entry.extension);
                 let created = Self::system_time_to_datetime(metadata.created())
-                    .map(|dt| dt.with_timezone(&Local))
-                    .unwrap_or_else(|| modified);
+                    .map_or_else(|| modified, |dt| dt.with_timezone(&Local));
 
                 tracing::trace!("Cache hit for: {}", path.display());
                 return Ok(entry.to_media_file(file_type, created));
@@ -290,10 +281,7 @@ impl Scanner {
 
                 if let Some(hash) = cached_hash {
                     file.hash = Some(hash.clone());
-                    hash_map
-                        .entry(hash)
-                        .or_default()
-                        .push(file.clone());
+                    hash_map.entry(hash).or_default().push(file.clone());
                 } else {
                     // Calculate hash and update cache
                     match self.calculate_file_hash(&file.path).await {
@@ -311,10 +299,7 @@ impl Scanner {
                                 }
                             }
 
-                            hash_map
-                                .entry(hash)
-                                .or_default()
-                                .push(file.clone());
+                            hash_map.entry(hash).or_default().push(file.clone());
                         }
                         Err(e) => {
                             tracing::warn!(
@@ -327,10 +312,7 @@ impl Scanner {
                     }
                 }
             } else if let Some(hash) = &file.hash {
-                hash_map
-                    .entry(hash.clone())
-                    .or_default()
-                    .push(file.clone());
+                hash_map.entry(hash.clone()).or_default().push(file.clone());
             }
 
             // Update progress
@@ -352,24 +334,6 @@ impl Scanner {
         hash_map.retain(|_, files| files.len() > 1);
 
         Ok(hash_map)
-    }
-
-    pub async fn clear_cache(&self) -> Result<()> {
-        let mut cache = self.cache.lock().await;
-        cache.clear();
-        cache.save().await?;
-        Ok(())
-    }
-
-    pub async fn get_cache_stats(&self) -> (usize, usize) {
-        let cache = self.cache.lock().await;
-        let total_entries = cache.len();
-        let entries_with_hash = cache
-            .entries
-            .values()
-            .filter(|entry| entry.hash.is_some())
-            .count();
-        (total_entries, entries_with_hash)
     }
 
     pub async fn scan_directory_with_duplicates(
@@ -430,7 +394,7 @@ impl Scanner {
         }
 
         // Include file size in hash to ensure different sized files have different hashes
-        hasher.update(&file_size.to_le_bytes());
+        hasher.update(file_size.to_le_bytes());
 
         Ok(format!("{:x}", hasher.finalize()))
     }
@@ -468,17 +432,15 @@ impl Scanner {
             .unwrap_or("")
             .to_lowercase();
 
-        let file_type = self.determine_file_type(&extension);
+        let file_type = Self::determine_file_type(&extension);
 
         // Use modified time as the primary timestamp
         let modified = Self::system_time_to_datetime(metadata.modified())
-            .map(|dt| dt.with_timezone(&Local))
-            .unwrap_or_else(Local::now);
+            .map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
         // Still get created time but it's secondary
         let created = Self::system_time_to_datetime(metadata.created())
-            .map(|dt| dt.with_timezone(&Local))
-            .unwrap_or_else(|| modified); // Fallback to modified if created is not available
+            .map_or_else(|| modified, |dt| dt.with_timezone(&Local)); // Fallback to modified if created is not available
 
         let mut media_file = MediaFile {
             path: path.to_path_buf(),
@@ -493,7 +455,7 @@ impl Scanner {
         };
 
         // Only extract EXIF for images, and make it optional
-        if file_type == FileType::Image && self.should_extract_metadata() {
+        if file_type == FileType::Image && Self::should_extract_metadata() {
             // Don't fail if EXIF extraction fails
             if let Ok(Ok(metadata)) = tokio::time::timeout(
                 std::time::Duration::from_secs(3),
@@ -508,7 +470,7 @@ impl Scanner {
         Ok(media_file)
     }
 
-    fn should_extract_metadata(&self) -> bool {
+    fn should_extract_metadata() -> bool {
         // Make metadata extraction optional or configurable
         false // For now, disable it for faster scanning
     }
@@ -525,11 +487,10 @@ impl Scanner {
 
         path.extension()
             .and_then(|e| e.to_str())
-            .map(|e| MEDIA_EXTENSIONS.contains(&e.to_lowercase().as_str()))
-            .unwrap_or(false)
+            .is_some_and(|e| MEDIA_EXTENSIONS.contains(&e.to_lowercase().as_str()))
     }
 
-    fn determine_file_type(&self, extension: &str) -> FileType {
+    fn determine_file_type(extension: &str) -> FileType {
         match extension {
             "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "tiff" | "raw" | "heic" | "heif" => {
                 FileType::Image
@@ -567,6 +528,7 @@ impl Scanner {
         !*self.is_scanning.lock().await
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     fn system_time_to_datetime(time: std::io::Result<SystemTime>) -> Option<DateTime<Utc>> {
         time.ok().and_then(|t| {
             t.duration_since(SystemTime::UNIX_EPOCH)
@@ -579,6 +541,5 @@ impl Scanner {
 fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
-        .map(|name| name.starts_with('.'))
-        .unwrap_or(false)
+        .is_some_and(|name| name.starts_with('.'))
 }

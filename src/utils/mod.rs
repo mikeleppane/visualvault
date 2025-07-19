@@ -1,5 +1,4 @@
 mod bytes;
-mod file_utils;
 mod folder_stats;
 mod progress;
 

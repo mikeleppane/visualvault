@@ -2,6 +2,7 @@ use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf, str::FromStr};
 
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Settings {
     pub source_folder: Option<PathBuf>,
