@@ -71,12 +71,7 @@ impl FileCache {
             .filter(|entry| entry.size == size && entry.modified == *modified)
     }
 
-    pub fn get_mut(
-        &mut self,
-        path: &Path,
-        size: u64,
-        modified: &DateTime<Local>,
-    ) -> Option<&mut CacheEntry> {
+    pub fn get_mut(&mut self, path: &Path, size: u64, modified: &DateTime<Local>) -> Option<&mut CacheEntry> {
         self.entries
             .get_mut(path)
             .filter(|entry| entry.size == size && entry.modified == *modified)
@@ -129,11 +124,7 @@ impl From<&MediaFile> for CacheEntry {
 }
 
 impl CacheEntry {
-    pub fn to_media_file(
-        &self,
-        file_type: crate::models::FileType,
-        created: DateTime<Local>,
-    ) -> MediaFile {
+    pub fn to_media_file(&self, file_type: crate::models::FileType, created: DateTime<Local>) -> MediaFile {
         MediaFile {
             path: self.path.clone(),
             name: self.name.clone(),

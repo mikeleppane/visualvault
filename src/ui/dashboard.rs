@@ -3,9 +3,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{
-        Bar, BarChart, BarGroup, Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs,
-    },
+    widgets::{Bar, BarChart, BarGroup, Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
 };
 use std::collections::HashMap;
 
@@ -29,11 +27,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(Color::Gray)),
         )
         .style(Style::default().fg(Color::White))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
 
     f.render_widget(tabs_widget, chunks[0]);
 
@@ -89,32 +83,22 @@ fn draw_stats_cards(f: &mut Frame, area: Rect, app: &App) {
     let cards = [
         ("Total Files", stats.total_files.to_string(), Color::Cyan),
         ("Total Size", format_bytes(stats.total_size), Color::Green),
-        (
-            "Duplicates",
-            stats.duplicate_count.to_string(),
-            Color::Yellow,
-        ),
-        (
-            "Media Types",
-            stats.media_types.len().to_string(),
-            Color::Magenta,
-        ),
+        ("Duplicates", stats.duplicate_count.to_string(), Color::Yellow),
+        ("Media Types", stats.media_types.len().to_string(), Color::Magenta),
     ];
 
     for (i, (title, value, color)) in cards.iter().enumerate() {
         let card = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(*color))
-            .title(format!(" {} ", title))
+            .title(format!(" {title} "))
             .title_style(Style::default().fg(*color).add_modifier(Modifier::BOLD));
 
         let content = Paragraph::new(vec![
             Line::from(""),
             Line::from(Span::styled(
                 value,
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             )),
         ])
         .block(card)
@@ -143,11 +127,7 @@ fn draw_folder_stats(f: &mut Frame, area: Rect, app: &App, is_source: bool) {
 
     if let Ok(settings) = settings {
         let (folder_path, title, color) = if is_source {
-            (
-                settings.source_folder.as_ref(),
-                " 📁 Source Folder ",
-                Color::Cyan,
-            )
+            (settings.source_folder.as_ref(), " 📁 Source Folder ", Color::Cyan)
         } else {
             (
                 settings.destination_folder.as_ref(),
@@ -158,19 +138,14 @@ fn draw_folder_stats(f: &mut Frame, area: Rect, app: &App, is_source: bool) {
 
         let content = if let Some(path) = folder_path {
             // Get folder name
-            let folder_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown");
+            let folder_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown");
 
             // Get cached stats if available
             let stats = app.folder_stats_cache.get(path);
 
             let mut lines = vec![Line::from(vec![Span::styled(
                 folder_name,
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
             )])];
 
             // Show the full path instead of just parent
@@ -204,9 +179,7 @@ fn draw_folder_stats(f: &mut Frame, area: Rect, app: &App, is_source: bool) {
                 // Stats are being calculated
                 lines.push(Line::from(vec![Span::styled(
                     "Calculating...",
-                    Style::default()
-                        .fg(Color::Gray)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC),
                 )]));
             }
 
@@ -215,9 +188,7 @@ fn draw_folder_stats(f: &mut Frame, area: Rect, app: &App, is_source: bool) {
             vec![
                 Line::from(vec![Span::styled(
                     "Not configured",
-                    Style::default()
-                        .fg(Color::Gray)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Gray).add_modifier(Modifier::ITALIC),
                 )]),
                 Line::from(vec![Span::styled(
                     "Press 's' to configure",
@@ -231,9 +202,7 @@ fn draw_folder_stats(f: &mut Frame, area: Rect, app: &App, is_source: bool) {
             .borders(Borders::ALL)
             .border_style(Style::default().fg(color));
 
-        let paragraph = Paragraph::new(content)
-            .block(block)
-            .alignment(Alignment::Left);
+        let paragraph = Paragraph::new(content).block(block).alignment(Alignment::Left);
 
         f.render_widget(paragraph, area);
     }
@@ -270,11 +239,7 @@ fn format_number(n: usize) -> String {
 
 fn draw_file_type_distribution(f: &mut Frame, area: Rect, app: &App) {
     let stats = &app.statistics;
-    let mut data: Vec<(&str, u64)> = stats
-        .media_types
-        .iter()
-        .map(|(k, v)| (k.as_str(), *v as u64))
-        .collect();
+    let mut data: Vec<(&str, u64)> = stats.media_types.iter().map(|(k, v)| (k.as_str(), *v as u64)).collect();
     data.sort_by(|a, b| b.1.cmp(&a.1));
     data.truncate(5);
 
@@ -299,11 +264,7 @@ fn draw_file_type_distribution(f: &mut Frame, area: Rect, app: &App) {
         .data(bar_group)
         .bar_width(3)
         .bar_gap(1)
-        .value_style(
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        );
+        .value_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD));
 
     f.render_widget(bar_chart, area);
 }
@@ -330,14 +291,10 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
     // Add organization activity if available
     if let Some(org_result) = &app.last_organize_result {
         let icon = if org_result.success { "✓" } else { "✗" };
-        let color = if org_result.success {
-            Color::Green
-        } else {
-            Color::Red
-        };
+        let color = if org_result.success { Color::Green } else { Color::Red };
 
         activities.push(ListItem::new(Line::from(vec![
-            Span::styled(format!("{} ", icon), Style::default().fg(color)),
+            Span::styled(format!("{icon} "), Style::default().fg(color)),
             Span::raw(format!(
                 "Organized {} of {} files to {}",
                 org_result.files_organized,
@@ -370,14 +327,9 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
             activities.push(ListItem::new(Line::from(vec![
                 Span::styled(
                     "⟳ ",
-                    Style::default()
-                        .fg(Color::Blue)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
                 ),
-                Span::raw(format!(
-                    "Scanning in progress... {} files found",
-                    progress.current
-                )),
+                Span::raw(format!("Scanning in progress... {} files found", progress.current)),
             ])));
         }
     } else if app.state == crate::app::AppState::Organizing {
@@ -386,14 +338,9 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
             activities.push(ListItem::new(Line::from(vec![
                 Span::styled(
                     "⟳ ",
-                    Style::default()
-                        .fg(Color::Blue)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
                 ),
-                Span::raw(format!(
-                    "Organizing files... {}/{}",
-                    progress.current, progress.total
-                )),
+                Span::raw(format!("Organizing files... {}/{}", progress.current, progress.total)),
             ])));
         }
     }
@@ -636,11 +583,7 @@ fn draw_timeline_chart(f: &mut Frame, area: Rect, timeline_data: &[(String, usiz
                 .value(*value)
                 .label(Line::from(label.to_string()))
                 .style(Style::default().fg(color))
-                .value_style(
-                    Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                )
+                .value_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
         })
         .collect();
 
@@ -660,12 +603,7 @@ fn draw_timeline_chart(f: &mut Frame, area: Rect, timeline_data: &[(String, usiz
     f.render_widget(bar_chart, area);
 }
 
-fn draw_timeline_table(
-    f: &mut Frame,
-    area: Rect,
-    timeline_data: &[(String, usize, u64)],
-    total_size: u64,
-) {
+fn draw_timeline_table(f: &mut Frame, area: Rect, timeline_data: &[(String, usize, u64)], total_size: u64) {
     // Calculate totals
     let total_files: usize = timeline_data.iter().map(|(_, count, _)| count).sum();
 
@@ -688,10 +626,9 @@ fn draw_timeline_table(
             Row::new(vec![
                 Cell::from(year.clone()).style(Style::default().fg(Color::Cyan)),
                 Cell::from(count.to_string()).style(Style::default().fg(Color::White)),
-                Cell::from(format!("{:.1}%", percentage)).style(Style::default().fg(Color::Yellow)),
+                Cell::from(format!("{percentage:.1}%")).style(Style::default().fg(Color::Yellow)),
                 Cell::from(format_bytes(*size)).style(Style::default().fg(Color::Green)),
-                Cell::from(format!("{:.1}%", size_percentage))
-                    .style(Style::default().fg(Color::Magenta)),
+                Cell::from(format!("{size_percentage:.1}%")).style(Style::default().fg(Color::Magenta)),
                 Cell::from(if *count > 0 {
                     format_bytes(*size / *count as u64)
                 } else {
@@ -704,41 +641,17 @@ fn draw_timeline_table(
 
     // Add footer row with totals
     let footer = Row::new(vec![
-        Cell::from("TOTAL").style(
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from(total_files.to_string()).style(
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("100.0%").style(
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from(format_bytes(total_size)).style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Cell::from("100.0%").style(
-            Style::default()
-                .fg(Color::Magenta)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Cell::from("TOTAL").style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from(total_files.to_string()).style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Cell::from("100.0%").style(Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Cell::from(format_bytes(total_size)).style(Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+        Cell::from("100.0%").style(Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
         Cell::from(if total_files > 0 {
             format_bytes(total_size / total_files as u64)
         } else {
             "0 B".to_string()
         })
-        .style(
-            Style::default()
-                .fg(Color::Blue)
-                .add_modifier(Modifier::BOLD),
-        ),
+        .style(Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD)),
     ]);
 
     let mut all_rows = rows;
@@ -759,16 +672,9 @@ fn draw_timeline_table(
         ],
     )
     .header(
-        Row::new(vec![
-            "Year",
-            "Files",
-            "Files %",
-            "Total Size",
-            "Size %",
-            "Avg Size",
-        ])
-        .style(Style::default().add_modifier(Modifier::BOLD))
-        .bottom_margin(1),
+        Row::new(vec!["Year", "Files", "Files %", "Total Size", "Size %", "Avg Size"])
+            .style(Style::default().add_modifier(Modifier::BOLD))
+            .bottom_margin(1),
     )
     .block(
         Block::default()

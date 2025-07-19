@@ -2,7 +2,7 @@
 rustflags = [
     "-Dwarnings",
     "-Dclippy::all",
-    "-Dclippy::pedantic",
+    # "-Dclippy::pedantic",
     "-Aclippy::similar_names",
     "-Aclippy::too_many_arguments",
     "-Aclippy::type_complexity",

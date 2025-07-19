@@ -83,7 +83,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
                     Style::default().fg(Color::Rgb(100, 100, 100)),
                 )])
             }
-            1 | 2 | 3 => {
+            1..=3 => {
                 // Logo lines with gradient effect
                 let parts: Vec<&str> = line.split("  ").collect();
                 let mut spans = Vec::new();
@@ -94,7 +94,6 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
                     } else if part.contains("╦") || part.contains("╚") || part.contains("╩") {
                         // ASCII art characters with cyan gradient
                         let color = match i {
-                            1 => Color::Cyan,
                             2 => Color::Rgb(0, 200, 200),
                             3 => Color::Rgb(0, 150, 150),
                             _ => Color::Cyan,
@@ -143,9 +142,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     };
 
     // Create centered header block
-    let header_block = Block::default()
-        .borders(Borders::NONE)
-        .padding(Padding::ZERO);
+    let header_block = Block::default().borders(Borders::NONE).padding(Padding::ZERO);
 
     let header_content = Paragraph::new(header_lines)
         .block(header_block)
@@ -155,6 +152,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
 
     // Add current state indicator in the top right
     let state_indicator = format!("{} {}", state_text.0, state_text.1);
+    #[allow(clippy::cast_possible_truncation)]
     let state_area = Rect {
         x: area.x + area.width.saturating_sub(state_indicator.len() as u16 + 4),
         y: area.y + 1,
@@ -166,9 +164,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         Span::raw(" "),
         Span::styled(
             state_indicator,
-            Style::default()
-                .fg(state_text.2)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(state_text.2).add_modifier(Modifier::BOLD),
         ),
         Span::raw(" "),
     ]))
@@ -177,6 +173,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(state_widget, state_area);
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
@@ -221,10 +218,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 if let Some(file) = app.cached_files.get(idx) {
                     vec![Line::from(vec![
                         Span::styled("📋 ", Style::default().fg(Color::Cyan)),
-                        Span::styled(
-                            format!("Viewing: {}", file.name),
-                            Style::default().fg(Color::Cyan),
-                        ),
+                        Span::styled(format!("Viewing: {}", file.name), Style::default().fg(Color::Cyan)),
                     ])]
                 } else {
                     vec![Line::from(vec![Span::styled(
@@ -237,9 +231,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 vec![Line::from(vec![
                     Span::styled(
                         "⟳ ",
-                        Style::default()
-                            .fg(Color::Blue)
-                            .add_modifier(Modifier::SLOW_BLINK),
+                        Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
                     ),
                     Span::styled("Scanning files...", Style::default().fg(Color::Blue)),
                 ])]
@@ -248,9 +240,7 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 vec![Line::from(vec![
                     Span::styled(
                         "⟳ ",
-                        Style::default()
-                            .fg(Color::Blue)
-                            .add_modifier(Modifier::SLOW_BLINK),
+                        Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
                     ),
                     Span::styled("Organizing files...", Style::default().fg(Color::Blue)),
                 ])]
@@ -264,13 +254,11 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
         }
     };
 
-    let center = Paragraph::new(center_content)
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
-        );
+    let center = Paragraph::new(center_content).alignment(Alignment::Center).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
+    );
 
     // Right section - stats
     let stats = match app.state {
@@ -325,16 +313,12 @@ fn draw_help_overlay(f: &mut Frame) {
         Line::from(""),
         Line::from(vec![Span::styled(
             "🖼️  VisualVault Help",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
         Line::from(vec![Span::styled(
             "Navigation",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )]),
         Line::from("  Tab        - Next tab"),
         Line::from("  Shift+Tab  - Previous tab"),
@@ -343,9 +327,7 @@ fn draw_help_overlay(f: &mut Frame) {
         Line::from(""),
         Line::from(vec![Span::styled(
             "Actions",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )]),
         Line::from("  r          - Scan for files"),
         Line::from("  o          - Organize files"),
@@ -356,9 +338,7 @@ fn draw_help_overlay(f: &mut Frame) {
         Line::from(""),
         Line::from(vec![Span::styled(
             "General",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )]),
         Line::from("  ?/F1       - Toggle this help"),
         Line::from("  q          - Quit application"),
@@ -376,11 +356,7 @@ fn draw_help_overlay(f: &mut Frame) {
         .block(
             Block::default()
                 .title(" Help ")
-                .title_style(
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                )
+                .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan)),
         )

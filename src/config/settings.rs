@@ -97,8 +97,8 @@ impl Default for Settings {
 
 impl Settings {
     pub async fn load() -> Result<Self> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
         let config_path = config_dir.join("visualvault").join("config.toml");
 
         if config_path.exists() {
@@ -108,21 +108,6 @@ impl Settings {
         } else {
             Ok(Self::default())
         }
-    }
-
-    pub async fn save(&self) -> Result<()> {
-        let config_dir = dirs::config_dir()
-            .ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
-        let app_config_dir = config_dir.join("visualvault");
-
-        // Create directory if it doesn't exist
-        tokio::fs::create_dir_all(&app_config_dir).await?;
-
-        let config_path = app_config_dir.join("config.toml");
-        let content = toml::to_string_pretty(self)?;
-        tokio::fs::write(&config_path, content).await?;
-
-        Ok(())
     }
 }
 

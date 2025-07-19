@@ -46,10 +46,7 @@ impl Progress {
         self.message = message;
     }
 
-    pub fn tick(&mut self) {
-        // Used for animated indicators
-    }
-
+    #[allow(clippy::cast_precision_loss)]
     pub fn percentage(&self) -> f64 {
         if self.total == 0 {
             0.0
@@ -62,6 +59,8 @@ impl Progress {
         self.started_at.elapsed()
     }
 
+    #[allow(clippy::missing_docs_in_private_items)]
+    #[allow(clippy::cast_precision_loss)]
     pub fn eta(&self) -> Option<std::time::Duration> {
         if self.current == 0 || self.total == 0 {
             return None;

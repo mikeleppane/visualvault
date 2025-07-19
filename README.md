@@ -1,6 +1,8 @@
 # 🖼️ VisualVault
 A modern, terminal-based media file organizer built with Rust
 
+![CI](https://github.com/yourusername/visualvault/workflows/CI/badge.svg)
+<img alt="Status" src="https://img.shields.io/badge/Status-Work in Progress-yellow">
 <img alt="Rust" src="https://img.shields.io/badge/Rust-1.88-orange">
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 

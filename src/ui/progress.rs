@@ -8,13 +8,13 @@ use ratatui::{
 
 use crate::app::App;
 
+#[allow(clippy::significant_drop_tightening)]
 pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     // Get progress data
-    let progress = app.progress.try_read();
-    if progress.is_err() {
-        return; // Skip if we can't get a lock
-    }
-    let progress = progress.unwrap();
+    let progress = match app.progress.try_read() {
+        Ok(p) => p,
+        Err(_) => return, // Skip if we can't get a lock
+    };
 
     // Create centered overlay area
     let area = centered_rect(60, 30, f.area());
@@ -38,11 +38,7 @@ pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     // Main block with border
     let block = Block::default()
         .title(" Operation Progress ")
-        .title_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
+        .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
         .style(Style::default().bg(Color::Rgb(20, 20, 30)));
@@ -57,10 +53,8 @@ pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     };
 
     let title = Paragraph::new(vec![Line::from(vec![Span::styled(
-        format!("{} {}", icon, operation),
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD),
+        format!("{icon} {operation}"),
+        Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
     )])])
     .alignment(Alignment::Center);
 
@@ -69,7 +63,7 @@ pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     // Progress bar
     let percentage = progress.percentage();
     let label = if progress.total > 0 {
-        format!("{:.0}%", percentage)
+        format!("{percentage:.0}%")
     } else {
         "Calculating...".to_string()
     };
@@ -114,11 +108,7 @@ pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     // Time information
     let elapsed = progress.elapsed();
     let time_info = if let Some(eta) = progress.eta() {
-        format!(
-            "Elapsed: {} | ETA: {}",
-            format_duration(elapsed),
-            format_duration(eta)
-        )
+        format!("Elapsed: {} | ETA: {}", format_duration(elapsed), format_duration(eta))
     } else {
         format!("Elapsed: {}", format_duration(elapsed))
     };
@@ -155,7 +145,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
 fn format_duration(duration: std::time::Duration) -> String {
     let secs = duration.as_secs();
     if secs < 60 {
-        format!("{}s", secs)
+        format!("{secs}s")
     } else if secs < 3600 {
         format!("{}m {}s", secs / 60, secs % 60)
     } else {

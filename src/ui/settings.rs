@@ -27,11 +27,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
                 .border_style(Style::default().fg(Color::Rgb(100, 100, 100))),
         )
         .style(Style::default().fg(Color::White))
-        .highlight_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        .highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD));
 
     f.render_widget(tabs_widget, chunks[0]);
 
@@ -44,6 +40,7 @@ pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     }
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
     let settings = &app.settings_cache;
 
@@ -71,9 +68,7 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let source_style = if is_editing_source {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if settings.source_folder.is_some() {
         Style::default().fg(Color::Green)
     } else {
@@ -84,16 +79,12 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(
                 "📁 Source Folder",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             if is_editing_source {
                 Span::styled(
                     " (editing)",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
                 )
             } else {
                 Span::raw("")
@@ -105,9 +96,7 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
             if is_editing_source {
                 Span::styled(
                     "_",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
                 )
             } else {
                 Span::raw("")
@@ -134,9 +123,7 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
     };
 
     let dest_style = if is_editing_dest {
-        Style::default()
-            .fg(Color::Yellow)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
     } else if settings.destination_folder.is_some() {
         Style::default().fg(Color::Green)
     } else {
@@ -147,16 +134,12 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(
                 "📁 Destination Folder",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             if is_editing_dest {
                 Span::styled(
                     " (editing)",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
                 )
             } else {
                 Span::raw("")
@@ -168,9 +151,7 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
             if is_editing_dest {
                 Span::styled(
                     "_",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
                 )
             } else {
                 Span::raw("")
@@ -205,16 +186,14 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
             let is_selected = app.selected_setting == idx + 2;
             let checkbox = if *enabled { "☑" } else { "☐" };
             let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
 
             ListItem::new(vec![
                 Line::from(vec![
-                    Span::styled(format!(" {} ", checkbox), Style::default().fg(Color::Green)),
+                    Span::styled(format!(" {checkbox} "), Style::default().fg(Color::Green)),
                     Span::styled(*name, style),
                 ]),
                 Line::from(vec![
@@ -237,6 +216,7 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
     draw_help_text(f, chunks[3]);
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
     let settings = &app.settings_cache;
 
@@ -253,21 +233,9 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
     // Organization mode
     let org_modes = vec![
         ("yearly", "Yearly", "Organize by year (2024/filename.jpg)"),
-        (
-            "monthly",
-            "Monthly",
-            "Organize by month (2024/03-March/filename.jpg)",
-        ),
-        (
-            "daily",
-            "Daily",
-            "Organize by day (2024/03/15/filename.jpg)",
-        ),
-        (
-            "type",
-            "By Type",
-            "Organize by file type (Images/filename.jpg)",
-        ),
+        ("monthly", "Monthly", "Organize by month (2024/03-March/filename.jpg)"),
+        ("daily", "Daily", "Organize by day (2024/03/15/filename.jpg)"),
+        ("type", "By Type", "Organize by file type (Images/filename.jpg)"),
         (
             "type-date",
             "Type + Date",
@@ -284,9 +252,7 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
             let radio = if is_selected { "◉" } else { "○" };
 
             let style = if is_focused {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else if is_selected {
                 Style::default().fg(Color::Green)
             } else {
@@ -350,9 +316,7 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
             let is_selected = app.selected_setting == idx + 5;
             let checkbox = if *enabled { "☑" } else { "☐" };
             let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
@@ -382,6 +346,7 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
     draw_organization_preview(f, chunks[2], app);
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
     let settings = &app.settings_cache;
 
@@ -410,16 +375,12 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(
                 "🔧 Worker Threads",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             if is_editing_threads {
                 Span::styled(
                     " (editing)",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
                 )
             } else {
                 Span::raw("")
@@ -430,9 +391,7 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(
                 thread_text,
                 if is_editing_threads {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::Green)
                 },
@@ -440,9 +399,7 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
             if is_editing_threads {
                 Span::styled(
                     "_",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
                 )
             } else {
                 Span::raw("")
@@ -474,16 +431,12 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
         Line::from(vec![
             Span::styled(
                 "💾 Buffer Size",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             ),
             if is_editing_buffer {
                 Span::styled(
                     " (editing)",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
                 )
             } else {
                 Span::raw("")
@@ -494,9 +447,7 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
             Span::styled(
                 buffer_text,
                 if is_editing_buffer {
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD)
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::Green)
                 },
@@ -504,17 +455,12 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
             if is_editing_buffer {
                 Span::styled(
                     "_",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::SLOW_BLINK),
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK),
                 )
             } else {
                 Span::raw("")
             },
-            Span::styled(
-                " per operation",
-                Style::default().fg(Color::Rgb(150, 150, 150)),
-            ),
+            Span::styled(" per operation", Style::default().fg(Color::Rgb(150, 150, 150))),
         ]),
     ])
     .block(
@@ -555,16 +501,14 @@ fn draw_performance_settings(f: &mut Frame, area: Rect, app: &App) {
             let is_selected = app.selected_setting == idx + 2;
             let checkbox = if *enabled { "☑" } else { "☐" };
             let style = if is_selected {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
             } else {
                 Style::default()
             };
 
             ListItem::new(vec![
                 Line::from(vec![
-                    Span::styled(format!(" {} ", checkbox), Style::default().fg(Color::Green)),
+                    Span::styled(format!(" {checkbox} "), Style::default().fg(Color::Green)),
                     Span::styled(*name, style),
                 ]),
                 Line::from(vec![
@@ -598,19 +542,14 @@ fn draw_organization_preview(f: &mut Frame, area: Rect, app: &App) {
     let mut preview_lines = vec![
         Line::from(vec![Span::styled(
             "📋 Preview",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
     ];
 
     for (desc, filename, file_type) in preview_examples {
         preview_lines.push(Line::from(vec![
-            Span::styled(
-                format!("{}: ", desc),
-                Style::default().fg(Color::Rgb(150, 150, 150)),
-            ),
+            Span::styled(format!("{desc}: "), Style::default().fg(Color::Rgb(150, 150, 150))),
             Span::styled(filename, Style::default().fg(Color::Yellow)),
         ]));
         preview_lines.push(Line::from(vec![
@@ -641,52 +580,27 @@ fn draw_help_text(f: &mut Frame, area: Rect) {
         )]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "Enter",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("Enter", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(" - Edit selected setting"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "Space",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("Space", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(" - Toggle checkbox/radio button"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "↑/↓",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("↑/↓", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(" - Navigate between settings"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "S",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("S", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(" - Save settings"),
         ]),
         Line::from(vec![
             Span::raw("  "),
-            Span::styled(
-                "R",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled("R", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::raw(" - Reset to defaults"),
         ]),
     ];
@@ -705,10 +619,7 @@ fn draw_performance_info(f: &mut Frame, area: Rect) {
         Line::from(""),
         Line::from(vec![
             Span::raw("• Use "),
-            Span::styled(
-                "worker threads = CPU cores",
-                Style::default().fg(Color::Yellow),
-            ),
+            Span::styled("worker threads = CPU cores", Style::default().fg(Color::Yellow)),
             Span::raw(" for balanced performance"),
         ]),
         Line::from(vec![
@@ -803,6 +714,9 @@ fn truncate_path(path: String, max_len: usize) -> String {
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_sign_loss)]
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;

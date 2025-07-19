@@ -43,14 +43,8 @@ impl Statistics {
             self.total_size += file.size;
 
             // Count by media type
-            *self
-                .media_types
-                .entry(file.file_type.to_string())
-                .or_insert(0) += 1;
-            *self
-                .type_sizes
-                .entry(file.file_type.to_string())
-                .or_insert(0) += file.size;
+            *self.media_types.entry(file.file_type.to_string()).or_insert(0) += 1;
+            *self.type_sizes.entry(file.file_type.to_string()).or_insert(0) += file.size;
 
             #[allow(clippy::cast_sign_loss)]
             let date_key = file.modified.format("%Y-%m").to_string();
@@ -73,17 +67,12 @@ impl Statistics {
         self.largest_files = sorted_by_size.into_iter().take(10).collect();
 
         // Find most recent files
-        let mut sorted_by_date: Vec<_> =
-            files.iter().map(|f| (f.path.clone(), f.modified)).collect();
+        let mut sorted_by_date: Vec<_> = files.iter().map(|f| (f.path.clone(), f.modified)).collect();
         sorted_by_date.sort_by(|a, b| b.1.cmp(&a.1));
         self.most_recent_files = sorted_by_date.into_iter().take(10).collect();
     }
 
-    pub fn update_from_scan_results(
-        &mut self,
-        files: &[MediaFile],
-        duplicates: &HashMap<String, Vec<MediaFile>>,
-    ) {
+    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &HashMap<String, Vec<MediaFile>>) {
         // Reset statistics
         self.total_files = files.len();
         self.total_size = files.iter().map(|f| f.size).sum();
@@ -96,14 +85,8 @@ impl Statistics {
         // Count file types
         for file in files {
             *self.file_types.entry(file.file_type.clone()).or_insert(0) += 1;
-            *self
-                .media_types
-                .entry(file.file_type.to_string())
-                .or_insert(0) += 1;
-            *self
-                .type_sizes
-                .entry(file.file_type.to_string())
-                .or_insert(0) += file.size;
+            *self.media_types.entry(file.file_type.to_string()).or_insert(0) += 1;
+            *self.type_sizes.entry(file.file_type.to_string()).or_insert(0) += file.size;
         }
 
         // Count duplicates and calculate duplicate size

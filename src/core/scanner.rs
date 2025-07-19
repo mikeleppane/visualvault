@@ -106,8 +106,7 @@ impl Scanner {
 
         // Process files with cache support
         let files = if settings.parallel_processing && settings.worker_threads > 1 {
-            self.process_files_parallel(paths, progress, settings)
-                .await?
+            self.process_files_parallel(paths, progress, settings).await?
         } else {
             self.process_files_sequential(paths, progress).await?
         };
@@ -136,10 +135,7 @@ impl Scanner {
 
                     let mut prog = progress.write().await;
                     prog.current = idx + 1;
-                    prog.message = format!(
-                        "Scanning: {}",
-                        path.file_name().unwrap_or_default().to_string_lossy()
-                    );
+                    prog.message = format!("Scanning: {}", path.file_name().unwrap_or_default().to_string_lossy());
                 }
                 Err(e) => {
                     tracing::warn!("Failed to process file {:?}: {}", path, e);
@@ -158,10 +154,7 @@ impl Scanner {
     ) -> Result<Vec<MediaFile>> {
         use tokio::task::JoinSet;
 
-        info!(
-            "process_files_parallel: Starting with {} paths",
-            paths.len()
-        );
+        info!("process_files_parallel: Starting with {} paths", paths.len());
 
         let mut join_set = JoinSet::new();
         let scanner = Arc::new(self.clone());
@@ -222,8 +215,8 @@ impl Scanner {
     async fn process_file_with_cache(&self, path: &Path) -> Result<MediaFile> {
         let metadata = tokio::fs::metadata(path).await?;
         let size = metadata.len();
-        let modified = Self::system_time_to_datetime(metadata.modified())
-            .map_or_else(Local::now, |dt| dt.with_timezone(&Local));
+        let modified =
+            Self::system_time_to_datetime(metadata.modified()).map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
         // Check cache first
         {
@@ -291,9 +284,7 @@ impl Scanner {
                             // Update cache with hash
                             {
                                 let mut cache = self.cache.lock().await;
-                                if let Some(entry) =
-                                    cache.get_mut(&file.path, file.size, &file.modified)
-                                {
+                                if let Some(entry) = cache.get_mut(&file.path, file.size, &file.modified) {
                                     entry.hash = Some(hash.clone());
                                     cache_updated = true;
                                 }
@@ -302,11 +293,7 @@ impl Scanner {
                             hash_map.entry(hash).or_default().push(file.clone());
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                "Failed to calculate hash for {}: {}",
-                                file.path.display(),
-                                e
-                            );
+                            tracing::warn!("Failed to calculate hash for {}: {}", file.path.display(), e);
                             continue;
                         }
                     }
@@ -344,9 +331,7 @@ impl Scanner {
         settings: &Settings,
     ) -> Result<(Vec<MediaFile>, HashMap<String, Vec<MediaFile>>)> {
         // First, scan all files
-        let mut files = self
-            .scan_directory(path, recursive, progress.clone(), settings)
-            .await?;
+        let mut files = self.scan_directory(path, recursive, progress.clone(), settings).await?;
 
         // Then detect duplicates if needed
         let duplicates = if settings.rename_duplicates {
@@ -420,27 +405,19 @@ impl Scanner {
 
     async fn process_file(&self, path: &Path) -> Result<MediaFile> {
         let metadata = tokio::fs::metadata(path).await?;
-        let name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string();
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
 
-        let extension = path
-            .extension()
-            .and_then(|e| e.to_str())
-            .unwrap_or("")
-            .to_lowercase();
+        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
         let file_type = Self::determine_file_type(&extension);
 
         // Use modified time as the primary timestamp
-        let modified = Self::system_time_to_datetime(metadata.modified())
-            .map_or_else(Local::now, |dt| dt.with_timezone(&Local));
+        let modified =
+            Self::system_time_to_datetime(metadata.modified()).map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
         // Still get created time but it's secondary
-        let created = Self::system_time_to_datetime(metadata.created())
-            .map_or_else(|| modified, |dt| dt.with_timezone(&Local)); // Fallback to modified if created is not available
+        let created =
+            Self::system_time_to_datetime(metadata.created()).map_or_else(|| modified, |dt| dt.with_timezone(&Local)); // Fallback to modified if created is not available
 
         let mut media_file = MediaFile {
             path: path.to_path_buf(),
@@ -457,11 +434,8 @@ impl Scanner {
         // Only extract EXIF for images, and make it optional
         if file_type == FileType::Image && Self::should_extract_metadata() {
             // Don't fail if EXIF extraction fails
-            if let Ok(Ok(metadata)) = tokio::time::timeout(
-                std::time::Duration::from_secs(3),
-                self.extract_image_metadata(path),
-            )
-            .await
+            if let Ok(Ok(metadata)) =
+                tokio::time::timeout(std::time::Duration::from_secs(3), self.extract_image_metadata(path)).await
             {
                 media_file.metadata = Some(metadata);
             }
@@ -478,10 +452,8 @@ impl Scanner {
     fn is_media_file(path: &Path) -> bool {
         const MEDIA_EXTENSIONS: &[&str] = &[
             // Images
-            "jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "raw", "heic", "heif",
-            // Videos
-            "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg",
-            // Audio
+            "jpg", "jpeg", "png", "gif", "bmp", "tiff", "webp", "raw", "heic", "heif", // Videos
+            "mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg", // Audio
             "mp3", "wav", "flac", "aac", "ogg", "wma", "m4a",
         ];
 
@@ -492,12 +464,8 @@ impl Scanner {
 
     fn determine_file_type(extension: &str) -> FileType {
         match extension {
-            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "tiff" | "raw" | "heic" | "heif" => {
-                FileType::Image
-            }
-            "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" => {
-                FileType::Video
-            }
+            "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "tiff" | "raw" | "heic" | "heif" => FileType::Image,
+            "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" => FileType::Video,
             "pdf" | "doc" | "docx" | "txt" | "odt" | "rtf" => FileType::Document,
             _ => FileType::Other,
         }

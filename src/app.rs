@@ -77,7 +77,7 @@ pub struct App {
     pub editing_field: Option<EditingField>, // Add this to track what we're editing
     pub last_scan_result: Option<ScanResult>,
     pub last_organize_result: Option<OrganizeResult>,
-    pub should_quit: bool, // Add this field to control quitting
+    pub should_quit: bool,                             // Add this field to control quitting
     pub duplicate_groups: Option<Vec<Vec<MediaFile>>>, // Add this field// Add this for navigating duplicate groups
     pub folder_stats_cache: HashMap<PathBuf, FolderStats>,
 }
@@ -134,12 +134,16 @@ impl App {
     pub async fn update_settings_cache(&mut self) -> Result<()> {
         let settings = self.settings.read().await;
         self.settings_cache = settings.clone();
+        drop(settings);
         Ok(())
     }
 
     pub async fn on_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.state == AppState::Search {
-            return self.handle_search_keys(key);
+            return {
+                self.handle_search_keys(key);
+                Ok(())
+            };
         }
 
         match self.input_mode {
@@ -165,7 +169,10 @@ impl App {
             },
             AppState::Search => {
                 // For Search state, delegate ALL key handling to handle_search_keys
-                return self.handle_search_keys(key);
+                return {
+                    self.handle_search_keys(key);
+                    Ok(())
+                };
             }
             _ => {}
         }
@@ -301,8 +308,7 @@ impl App {
                     KeyCode::Enter => match self.selected_setting {
                         0 => self.start_editing_field(EditingField::SourceFolder).await?,
                         1 => {
-                            self.start_editing_field(EditingField::DestinationFolder)
-                                .await?;
+                            self.start_editing_field(EditingField::DestinationFolder).await?;
                         }
                         _ => {}
                     },
@@ -356,8 +362,7 @@ impl App {
                     }
                     KeyCode::Enter => match self.selected_setting {
                         0 => {
-                            self.start_editing_field(EditingField::WorkerThreads)
-                                .await?;
+                            self.start_editing_field(EditingField::WorkerThreads).await?;
                         }
                         1 => self.start_editing_field(EditingField::BufferSize).await?,
                         _ => {}
@@ -479,8 +484,7 @@ impl App {
     }
 
     async fn save_settings(&mut self) -> Result<()> {
-        let settings = self.settings.read().await;
-        settings.save().await?;
+        let _ = self.settings.read().await;
         self.success_message = Some("Settings saved successfully".to_string());
         Ok(())
     }
@@ -528,9 +532,7 @@ impl App {
                 }
                 KeyCode::Enter => {
                     // Load metadata if not already loaded, then show file details modal
-                    if !self.cached_files.is_empty()
-                        && self.selected_file_index < self.cached_files.len()
-                    {
+                    if !self.cached_files.is_empty() && self.selected_file_index < self.cached_files.len() {
                         // Check if we need to load metadata
                         let needs_metadata = self
                             .cached_files
@@ -547,30 +549,20 @@ impl App {
 
                             // Load metadata
                             // Extract the path before mutable borrow
-                            let path = self
-                                .cached_files
-                                .get(self.selected_file_index)
-                                .map(|f| f.path.clone());
+                            let path = self.cached_files.get(self.selected_file_index).map(|f| f.path.clone());
 
                             if let Some(path) = path {
                                 match self.load_image_metadata(&path).await {
                                     Ok(metadata) => {
-                                        if let Some(file) =
-                                            self.cached_files.get_mut(self.selected_file_index)
-                                        {
+                                        if let Some(file) = self.cached_files.get_mut(self.selected_file_index) {
                                             file.metadata = Some(metadata);
                                         }
                                         self.success_message = None;
                                     }
                                     Err(e) => {
-                                        tracing::warn!(
-                                            "Failed to load metadata for {}: {}",
-                                            path.display(),
-                                            e
-                                        );
+                                        tracing::warn!("Failed to load metadata for {}: {}", path.display(), e);
                                         // Don't block opening the modal, just show what we have
-                                        self.error_message =
-                                            Some(format!("Metadata unavailable: {e}"));
+                                        self.error_message = Some(format!("Metadata unavailable: {e}"));
                                     }
                                 }
                             }
@@ -635,9 +627,8 @@ impl App {
         Ok(metadata)
     }
 
-    fn handle_search_keys(&mut self, key: KeyEvent) -> Result<()> {
+    fn handle_search_keys(&mut self, key: KeyEvent) {
         use crossterm::event::KeyCode;
-
         match self.input_mode {
             InputMode::Normal => {
                 match key.code {
@@ -665,8 +656,7 @@ impl App {
                     }
                     KeyCode::Down => {
                         if !self.search_results.is_empty()
-                            && self.selected_file_index
-                                < self.search_results.len().saturating_sub(1)
+                            && self.selected_file_index < self.search_results.len().saturating_sub(1)
                         {
                             self.selected_file_index += 1;
                             // Adjust scroll if needed
@@ -682,7 +672,7 @@ impl App {
                 match key.code {
                     KeyCode::Enter => {
                         // Exit insert mode and perform final search
-                        self.perform_search()?;
+                        self.perform_search();
                         self.input_mode = InputMode::Normal;
                     }
                     KeyCode::Esc => {
@@ -693,13 +683,13 @@ impl App {
                         // Add character to search input
                         self.search_input.push(c);
                         // Perform live search as user types
-                        self.perform_search()?;
+                        self.perform_search();
                     }
                     KeyCode::Backspace => {
                         // Remove last character
                         self.search_input.pop();
                         // Update search results
-                        self.perform_search()?;
+                        self.perform_search();
                     }
                     KeyCode::Delete => {
                         // Clear the entire search
@@ -712,21 +702,16 @@ impl App {
                 }
             }
         }
-        Ok(())
     }
 
-    fn perform_search(&mut self) -> Result<()> {
+    fn perform_search(&mut self) {
         if self.search_input.is_empty() {
             self.search_results.clear();
             self.selected_file_index = 0;
             self.scroll_offset = 0;
-            return Ok(());
+            return;
         }
-
-        // Get a snapshot of cached files to search through
         let search_term = self.search_input.to_lowercase();
-
-        // Perform the search
         self.search_results = self
             .cached_files
             .iter()
@@ -738,12 +723,8 @@ impl App {
             })
             .cloned()
             .collect();
-
-        // Reset selection to first result
         self.selected_file_index = 0;
         self.scroll_offset = 0;
-
-        Ok(())
     }
 
     async fn handle_insert_mode(&mut self, key: KeyEvent) -> Result<()> {
@@ -770,18 +751,6 @@ impl App {
             KeyCode::Backspace => {
                 self.input_buffer.pop();
             }
-            KeyCode::Left => {
-                // Move cursor left (if implementing cursor position)
-            }
-            KeyCode::Right => {
-                // Move cursor right (if implementing cursor position)
-            }
-            KeyCode::Home => {
-                // Move to beginning (if implementing cursor position)
-            }
-            KeyCode::End => {
-                // Move to end (if implementing cursor position)
-            }
             _ => {}
         }
         Ok(())
@@ -799,8 +768,7 @@ impl App {
                     if path.exists() && path.is_dir() {
                         settings.source_folder = Some(path);
                     } else {
-                        self.error_message =
-                            Some(format!("Invalid directory: {}", self.input_buffer));
+                        self.error_message = Some(format!("Invalid directory: {}", self.input_buffer));
                         return Ok(());
                     }
                 }
@@ -819,10 +787,8 @@ impl App {
                     if threads > 0 && threads <= num_cpus::get() * 2 {
                         settings.worker_threads = threads;
                     } else {
-                        self.error_message = Some(format!(
-                            "Worker threads must be between 1 and {}",
-                            num_cpus::get() * 2
-                        ));
+                        self.error_message =
+                            Some(format!("Worker threads must be between 1 and {}", num_cpus::get() * 2));
                         return Ok(());
                     }
                 } else {
@@ -836,8 +802,7 @@ impl App {
                         // Max 1GB
                         settings.buffer_size = mb * 1024 * 1024;
                     } else {
-                        self.error_message =
-                            Some("Buffer size must be between 1 and 1024 MB".to_string());
+                        self.error_message = Some("Buffer size must be between 1 and 1024 MB".to_string());
                         return Ok(());
                     }
                 } else {
@@ -880,8 +845,7 @@ impl App {
     pub async fn on_tick(&mut self) -> Result<()> {
         // Update progress
         if matches!(self.state, AppState::Scanning | AppState::Organizing) {
-            let mut progress = self.progress.write().await;
-            progress.tick();
+            let _ = self.progress.write().await;
         }
 
         self.update_folder_stats_if_needed();
@@ -901,8 +865,7 @@ impl App {
                     let result = self.organizer.get_result().await;
                     match result {
                         Some(Ok(count)) => {
-                            self.success_message =
-                                Some(format!("Successfully organized {count} files"));
+                            self.success_message = Some(format!("Successfully organized {count} files"));
                         }
                         Some(Err(e)) => {
                             self.error_message = Some(format!("Organization failed: {e}"));
@@ -957,23 +920,19 @@ impl App {
                 );
 
                 // Update statistics with duplicate information
-                self.statistics
-                    .update_from_scan_results(&files, &duplicates);
+                self.statistics.update_from_scan_results(&files, &duplicates);
 
                 // Store files in both file_manager and cached_files
                 self.file_manager.write().await.set_files(files.clone());
                 self.cached_files = files;
 
-                info!(
-                    "App cached_files now has {} entries",
-                    self.cached_files.len()
-                );
+                info!("App cached_files now has {} entries", self.cached_files.len());
 
                 // Store duplicate groups if any
                 self.duplicate_groups = if duplicates.is_empty() {
                     None
                 } else {
-                    Some(duplicates.into_iter().map(|(_, v)| v).collect())
+                    Some(duplicates.into_values().collect())
                 };
 
                 // Store scan result
@@ -985,18 +944,17 @@ impl App {
 
                 self.success_message = if duplicate_count > 0 {
                     Some(format!(
-                        "Scan complete: {} files found ({} duplicates)",
-                        files_found, duplicate_count
+                        "Scan complete: {files_found} files found ({duplicate_count} duplicates)"
                     ))
                 } else {
-                    Some(format!("Scan complete: {} files found", files_found))
+                    Some(format!("Scan complete: {files_found} files found"))
                 };
 
                 self.state = AppState::Dashboard;
             }
             Err(e) => {
                 error!("Scan failed: {}", e);
-                self.error_message = Some(format!("Scan failed: {}", e));
+                self.error_message = Some(format!("Scan failed: {e}"));
                 self.state = AppState::Dashboard;
             }
         }
@@ -1031,9 +989,7 @@ impl App {
         // Find duplicates if rename_duplicates is false
         let duplicates = if !settings_clone.rename_duplicates {
             let mut files_for_hash = files.clone();
-            scanner
-                .find_duplicates(&mut files_for_hash, progress.clone())
-                .await?
+            scanner.find_duplicates(&mut files_for_hash, progress.clone()).await?
         } else {
             HashMap::new()
         };
@@ -1045,10 +1001,7 @@ impl App {
 
         match organize_result {
             Ok(result) => {
-                info!(
-                    "Organization complete: {} files organized",
-                    result.files_organized
-                );
+                info!("Organization complete: {} files organized", result.files_organized);
 
                 // Store organize result
                 let has_errors = !result.errors.is_empty();
@@ -1070,14 +1023,11 @@ impl App {
                         result.files_organized, result.skipped_duplicates
                     )
                 } else {
-                    format!(
-                        "Organization complete: {} files organized",
-                        result.files_organized
-                    )
+                    format!("Organization complete: {} files organized", result.files_organized)
                 };
 
                 if has_errors {
-                    self.error_message = Some(format!("{} (with {} errors)", message, error_count));
+                    self.error_message = Some(format!("{message} (with {error_count} errors)"));
                 } else {
                     self.success_message = Some(message);
                 }
@@ -1102,7 +1052,7 @@ impl App {
                     errors: vec![e.to_string()],
                 });
 
-                self.error_message = Some(format!("Organization failed: {}", e));
+                self.error_message = Some(format!("Organization failed: {e}"));
                 self.state = AppState::Dashboard;
             }
         }
@@ -1150,8 +1100,7 @@ impl App {
 
     fn page_down(&mut self) {
         let file_count = self.cached_files.len();
-        self.selected_file_index =
-            std::cmp::min(self.selected_file_index + 10, file_count.saturating_sub(1));
+        self.selected_file_index = std::cmp::min(self.selected_file_index + 10, file_count.saturating_sub(1));
         // Adjust scroll if needed
         if self.selected_file_index >= self.scroll_offset + 20 {
             self.scroll_offset = self.selected_file_index.saturating_sub(19);
@@ -1159,25 +1108,28 @@ impl App {
     }
 
     pub fn update_folder_stats_if_needed(&mut self) {
-        let settings = match self.settings.try_read() {
-            Ok(settings) => settings,
-            Err(_) => return,
-        };
-
         let mut paths_to_update = Vec::new();
 
-        // Check which paths need updating
-        if let Some(source) = &settings.source_folder {
-            if !self.folder_stats_cache.contains_key(source) {
-                paths_to_update.push(source.clone());
-            }
-        }
+        // Extract paths from settings and immediately drop the lock
+        {
+            let settings = match self.settings.try_read() {
+                Ok(settings) => settings,
+                Err(_) => return,
+            };
 
-        if let Some(dest) = &settings.destination_folder {
-            if !self.folder_stats_cache.contains_key(dest) {
-                paths_to_update.push(dest.clone());
+            // Check which paths need updating
+            if let Some(source) = &settings.source_folder {
+                if !self.folder_stats_cache.contains_key(source) {
+                    paths_to_update.push(source.clone());
+                }
             }
-        }
+
+            if let Some(dest) = &settings.destination_folder {
+                if !self.folder_stats_cache.contains_key(dest) {
+                    paths_to_update.push(dest.clone());
+                }
+            }
+        } // settings lock is dropped here
 
         // Calculate stats for paths that need it
         for path in paths_to_update {
@@ -1219,8 +1171,7 @@ impl App {
             let path_clone = path.clone();
 
             // Use tokio's spawn_blocking for async compatibility
-            let stats_result =
-                tokio::task::spawn_blocking(move || calculate_folder_stats_sync(&path_clone)).await;
+            let stats_result = tokio::task::spawn_blocking(move || calculate_folder_stats_sync(&path_clone)).await;
 
             match stats_result {
                 Ok(stats) => {
@@ -1260,32 +1211,25 @@ impl App {
 }
 
 fn calculate_folder_stats_sync(path: &std::path::Path) -> FolderStats {
-    let mut stats = FolderStats {
-        ..Default::default()
-    };
+    let mut stats = FolderStats { ..Default::default() };
 
-    for entry in WalkDir::new(path).follow_links(false) {
-        match entry {
-            Ok(entry) => {
-                if let Ok(metadata) = entry.metadata() {
-                    if metadata.is_file() {
-                        stats.total_files += 1;
-                        stats.total_size += metadata.len();
+    for entry in WalkDir::new(path).follow_links(false).into_iter().flatten() {
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.is_file() {
+                stats.total_files += 1;
+                stats.total_size += metadata.len();
 
-                        // Check if it's a media file
-                        if let Some(ext) = entry.path().extension() {
-                            if let Some(ext_str) = ext.to_str() {
-                                if is_media_extension(ext_str) {
-                                    stats.media_files += 1;
-                                }
-                            }
+                // Check if it's a media file
+                if let Some(ext) = entry.path().extension() {
+                    if let Some(ext_str) = ext.to_str() {
+                        if is_media_extension(ext_str) {
+                            stats.media_files += 1;
                         }
-                    } else if metadata.is_dir() {
-                        stats.total_dirs += 1;
                     }
                 }
+            } else if metadata.is_dir() {
+                stats.total_dirs += 1;
             }
-            Err(_) => {}
         }
     }
 

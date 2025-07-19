@@ -60,10 +60,7 @@ impl FileOrganizer {
                         // First file from this group, process it
                         processed_hashes.insert(hash.clone());
                         // Choose the oldest file (by modified date) or first in list
-                        let chosen_file = duplicate_group
-                            .iter()
-                            .min_by_key(|f| f.modified)
-                            .unwrap_or(&file);
+                        let chosen_file = duplicate_group.iter().min_by_key(|f| f.modified).unwrap_or(&file);
                         files_to_organize.push(chosen_file.clone());
                     } else {
                         // Not a duplicate, process normally
@@ -121,12 +118,7 @@ impl FileOrganizer {
         })
     }
 
-    async fn organize_file(
-        &self,
-        file: &MediaFile,
-        destination: &Path,
-        settings: &Settings,
-    ) -> Result<PathBuf> {
+    async fn organize_file(&self, file: &MediaFile, destination: &Path, settings: &Settings) -> Result<PathBuf> {
         let target_dir = Self::determine_target_directory(file, destination, settings)?;
 
         // Create target directory if it doesn't exist
@@ -150,10 +142,7 @@ impl FileOrganizer {
                 .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or(&file_name);
-            let ext = Path::new(&file_name)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("");
             if ext.is_empty() {
                 file_name
             } else {
@@ -171,11 +160,7 @@ impl FileOrganizer {
         Ok(target_path)
     }
 
-    fn determine_target_directory(
-        file: &MediaFile,
-        destination: &Path,
-        settings: &Settings,
-    ) -> Result<PathBuf> {
+    fn determine_target_directory(file: &MediaFile, destination: &Path, settings: &Settings) -> Result<PathBuf> {
         let mut path = destination.to_path_buf();
 
         if settings.separate_videos && file.file_type == FileType::Video {

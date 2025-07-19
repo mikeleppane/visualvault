@@ -31,11 +31,7 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
     // Main block
     let block = Block::default()
         .title(" File Details ")
-        .title_style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        )
+        .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
         .style(Style::default().bg(Color::Rgb(20, 20, 30)));
@@ -51,12 +47,10 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
     };
 
     let title = Paragraph::new(vec![Line::from(vec![
-        Span::raw(format!("{} ", icon)),
+        Span::raw(format!("{icon} ")),
         Span::styled(
             &file.name,
-            Style::default()
-                .fg(Color::White)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         ),
     ])])
     .alignment(Alignment::Center);
@@ -76,18 +70,15 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
         Row::new(vec!["Modified", &modified]),
     ];
 
-    let basic_table = Table::new(
-        basic_info,
-        [Constraint::Percentage(30), Constraint::Percentage(70)],
-    )
-    .block(
-        Block::default()
-            .title(" Basic Information ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Gray)),
-    )
-    .row_highlight_style(Style::default().fg(Color::Yellow))
-    .column_spacing(2);
+    let basic_table = Table::new(basic_info, [Constraint::Percentage(30), Constraint::Percentage(70)])
+        .block(
+            Block::default()
+                .title(" Basic Information ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray)),
+        )
+        .row_highlight_style(Style::default().fg(Color::Yellow))
+        .column_spacing(2);
 
     f.render_widget(basic_table, chunks[1]);
 
@@ -114,24 +105,18 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
         Row::new(vec!["Permissions", &permissions]),
     ];
 
-    let fs_table = Table::new(
-        fs_info,
-        [Constraint::Percentage(30), Constraint::Percentage(70)],
-    )
-    .block(
-        Block::default()
-            .title(" File System ")
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Gray)),
-    )
-    .column_spacing(2);
+    let fs_table = Table::new(fs_info, [Constraint::Percentage(30), Constraint::Percentage(70)])
+        .block(
+            Block::default()
+                .title(" File System ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Gray)),
+        )
+        .column_spacing(2);
 
     f.render_widget(fs_table, chunks[2]);
 
-    info!(
-        "Metadata section (for images): {}",
-        &file.metadata.is_some()
-    );
+    info!("Metadata section (for images): {}", &file.metadata.is_some());
 
     // Metadata section (for images)
     if file.file_type == FileType::Image {
@@ -181,19 +166,9 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
 
     // Help text
     let help = Paragraph::new(vec![Line::from(vec![
-        Span::styled(
-            "ESC",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("ESC", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         Span::raw(" or "),
-        Span::styled(
-            "q",
-            Style::default()
-                .fg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
-        ),
+        Span::styled("q", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
         Span::raw(" to close"),
     ])])
     .alignment(Alignment::Center)

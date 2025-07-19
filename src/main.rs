@@ -98,11 +98,7 @@ async fn run() -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        LeaveAlternateScreen,
-        DisableMouseCapture
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen, DisableMouseCapture)?;
     terminal.show_cursor()?;
 
     if let Err(err) = res {
@@ -135,9 +131,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: Arc<RwLock<App>>) 
                     let mut app = app.write().await;
 
                     match key.code {
-                        KeyCode::Char('c')
-                            if key.modifiers.contains(event::KeyModifiers::CONTROL) =>
-                        {
+                        KeyCode::Char('c') if key.modifiers.contains(event::KeyModifiers::CONTROL) => {
                             info!("User forced quit");
                             return Ok(());
                         }
@@ -155,8 +149,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: Arc<RwLock<App>>) 
 
         // Update app state on tick
         if last_tick.elapsed() >= tick_rate {
-            let mut app = app.write().await;
-            app.on_tick().await?;
+            app.write().await.on_tick().await?;
             last_tick = Instant::now();
         }
     }

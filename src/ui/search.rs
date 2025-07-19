@@ -38,23 +38,17 @@ fn draw_search_bar(f: &mut Frame, area: Rect, app: &App) {
         Style::default().fg(Color::White)
     };
 
-    let input = Paragraph::new(app.search_input.as_str())
-        .style(input_style)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(if app.input_mode == InputMode::Insert {
-                    Style::default().fg(Color::Yellow)
-                } else {
-                    Style::default().fg(Color::Gray)
-                })
-                .title(" Search Files ")
-                .title_style(
-                    Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::BOLD),
-                ),
-        );
+    let input = Paragraph::new(app.search_input.as_str()).style(input_style).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(if app.input_mode == InputMode::Insert {
+                Style::default().fg(Color::Yellow)
+            } else {
+                Style::default().fg(Color::Gray)
+            })
+            .title(" Search Files ")
+            .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+    );
 
     f.render_widget(input, area);
 
@@ -71,9 +65,7 @@ fn draw_search_results(f: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![Span::styled(
                 "No files found matching your search criteria",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::ITALIC),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
             )]),
             Line::from(""),
             Line::from(vec![Span::raw("Try adjusting your search terms")]),
@@ -96,9 +88,7 @@ fn draw_search_results(f: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![Span::styled(
                 "🔍 Search for files",
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
             )]),
             Line::from(""),
             Line::from("• Press Enter to start typing"),
@@ -107,9 +97,7 @@ fn draw_search_results(f: &mut Frame, area: Rect, app: &App) {
             Line::from(""),
             Line::from(vec![Span::styled(
                 "Tips:",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
             )]),
             Line::from("  - Search updates as you type"),
             Line::from("  - Use partial names to find files"),
@@ -143,16 +131,10 @@ fn draw_search_results(f: &mut Frame, area: Rect, app: &App) {
         .map(|file| {
             Row::new(vec![
                 Cell::from(file.name.clone()),
-                Cell::from(file.file_type.to_string())
-                    .style(Style::default().fg(get_type_color(&file.file_type))),
+                Cell::from(file.file_type.to_string()).style(Style::default().fg(get_type_color(&file.file_type))),
                 Cell::from(format_bytes(file.size)),
                 Cell::from(file.modified.format("%Y-%m-%d").to_string()),
-                Cell::from(
-                    file.path
-                        .parent()
-                        .map(|p| p.display().to_string())
-                        .unwrap_or_default(),
-                ),
+                Cell::from(file.path.parent().map(|p| p.display().to_string()).unwrap_or_default()),
             ])
         })
         .collect();
