@@ -128,12 +128,9 @@ Development Setup
 ## 📝 Roadmap
  * <input disabled="" type="checkbox"> Complete duplicate file handling UI
  * <input disabled="" type="checkbox"> Add video metadata extraction
- * <input disabled="" type="checkbox"> Implement search and filtering
+ * <input disabled="" type="checkbox"> Support filtering
  * <input disabled="" type="checkbox"> Add export/import functionality
- * <input disabled="" type="checkbox"> Support for RAW image formats
  * <input disabled="" type="checkbox"> Cloud storage integration
- * <input disabled="" type="checkbox"> Web UI companion
- * <input disabled="" type="checkbox"> Mobile app for remote management
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
@@ -143,4 +140,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
  * Uses Tokio - Async runtime for Rust
  * walkdir - Recursive directory traversal
  * kamadak-exif - EXIF metadata extraction
-<p align="center"> Made with ❤️ in Rust </p>
+<p align="center"> Written with ❤️ in Rust & built with Ratatui </p>
