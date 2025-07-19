@@ -7,11 +7,7 @@ A modern, terminal-based media file organizer built with Rust
 
 ## 🎥 Introduction Video
 
-<p align="center">
-  <a href="https://youtu.be/JdzuCGQH1vQ">
-    <img src="images/video-thumbnail.png" alt="VisualVault Introduction Video" width="600">
-  </a>
-</p>
+[![Watch the video](https://img.youtube.com/vi/JdzuCGQH1vQ/maxresdefault.jpg)](https://youtu.be/JdzuCGQH1vQ)
 
 <p align="center">
   <i>Click the image above to watch a quick introduction to VisualVault</i>
