@@ -445,7 +445,7 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
 fn format_duration(duration: std::time::Duration) -> String {
     let secs = duration.as_secs();
     if secs < 60 {
-        format!("{}s", secs)
+        format!("{secs}s")
     } else if secs < 3600 {
         format!("{}m {}s", secs / 60, secs % 60)
     } else {
@@ -529,16 +529,21 @@ fn draw_types_chart(f: &mut Frame, area: Rect, app: &App) {
         .collect();
     type_data.sort_by(|a, b| b.1.cmp(&a.1));
 
+    #[allow(clippy::cast_precision_loss)]
     let rows: Vec<Row> = type_data
         .iter()
         .map(|(file_type, count, size)| {
             Row::new(vec![
                 Cell::from(file_type.clone()).style(Style::default().fg(get_type_color(file_type))),
-                Cell::from(format!("{}", count)),
+                Cell::from(format!("{count}")),
                 Cell::from(format_bytes(*size)),
                 Cell::from(format!(
                     "{:.1}%",
-                    (*size as f64 / stats.total_size as f64) * 100.0
+                    if stats.total_size == 0 {
+                        0.0
+                    } else {
+                        (*size as f64 / stats.total_size as f64) * 100.0
+                    }
                 )),
             ])
         })
