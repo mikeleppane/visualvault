@@ -4,9 +4,28 @@ A modern, terminal-based media file organizer built with Rust
 <img alt="Status" src="https://img.shields.io/badge/Status-Work in Progress-yellow">
 <img alt="Rust" src="https://img.shields.io/badge/Rust-1.88-orange">
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
-<p align="center"> <img src="images/screenshot.png" alt="VisualVault Screenshot" /> </p>
-🚧 Work in Progress
-Note: VisualVault is currently under active development. Features may be incomplete or subject to change. Contributions and feedback are welcome!
+
+<img alt="Status" src="https://img.shields.io/badge/Status-Work in Progress-yellow">
+<img alt="Rust" src="https://img.shields.io/badge/Rust-1.88-orange">
+<img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
+
+## 🎥 Introduction Video
+
+<p align="center">
+  <a href="https://youtu.be/JdzuCGQH1vQ">
+    <img src="images/video-thumbnail.png" alt="VisualVault Introduction Video" width="600">
+  </a>
+</p>
+
+<p align="center">
+  <i>Click the image above to watch a quick introduction to VisualVault</i>
+</p>
+
+## 📸 Screenshot
+
+<p align="center">
+  <img src="images/screenshot.png" alt="VisualVault Screenshot" />
+</p>
 
 ## ✨ Features
 ### 🎯 Core Functionality
@@ -69,7 +88,7 @@ Dashboard
  * `r` - Start scanning
  * `o` - Start organizing
  * `f` - Search files
- * `u` - Review duplicates
+ * `u` - update target/destination folder stats
 Settings
  * `↑`/`↓` - Navigate settings
  * `Enter` - Edit setting
