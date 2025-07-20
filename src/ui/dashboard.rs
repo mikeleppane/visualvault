@@ -248,7 +248,7 @@ fn draw_file_type_distribution(f: &mut Frame, area: Rect, app: &App) {
         .map(|(label, value)| {
             Bar::default()
                 .value(*value)
-                .label(Line::from(label.to_string()))
+                .label(Line::from((*label).to_string()))
                 .style(Style::default().fg(get_type_color(label)))
         })
         .collect();
@@ -581,7 +581,7 @@ fn draw_timeline_chart(f: &mut Frame, area: Rect, timeline_data: &[(String, usiz
 
             Bar::default()
                 .value(*value)
-                .label(Line::from(label.to_string()))
+                .label(Line::from((*label).to_string()))
                 .style(Style::default().fg(color))
                 .value_style(Style::default().fg(Color::White).add_modifier(Modifier::BOLD))
         })
@@ -611,12 +611,13 @@ fn draw_timeline_table(f: &mut Frame, area: Rect, timeline_data: &[(String, usiz
     let rows: Vec<Row> = timeline_data
         .iter()
         .map(|(year, count, size)| {
+            #[allow(clippy::cast_precision_loss)]
             let percentage = if total_files > 0 {
                 (*count as f64 / total_files as f64) * 100.0
             } else {
                 0.0
             };
-
+            #[allow(clippy::cast_precision_loss)]
             let size_percentage = if total_size > 0 {
                 (*size as f64 / total_size as f64) * 100.0
             } else {
@@ -698,6 +699,9 @@ fn get_type_color(file_type: &str) -> Color {
     }
 }
 
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;

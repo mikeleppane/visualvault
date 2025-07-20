@@ -9,6 +9,7 @@ use tracing::info;
 
 use crate::models::{FileType, MediaFile, MediaMetadata};
 
+#[allow(clippy::too_many_lines)]
 pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
     let area = centered_rect(70, 80, f.area());
 
@@ -87,15 +88,14 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
     let parent = file
         .path
         .parent()
-        .map(|p| p.display().to_string())
-        .unwrap_or_else(|| "N/A".to_string());
+        .map_or_else(|| "N/A".to_string(), |p| p.display().to_string());
     #[cfg(unix)]
     let permissions = {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(&file.path)
-            .ok()
-            .map(|m| format!("{:o}", m.permissions().mode() & 0o777))
-            .unwrap_or_else(|| "Unknown".to_string())
+        std::fs::metadata(&file.path).ok().map_or_else(
+            || "Unknown".to_string(),
+            |m| format!("{:o}", m.permissions().mode() & 0o777),
+        )
     };
 
     #[cfg(not(unix))]
@@ -211,6 +211,9 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
+#[allow(clippy::cast_precision_loss)]
+#[allow(clippy::cast_possible_truncation)]
+#[allow(clippy::cast_sign_loss)]
 fn format_bytes(bytes: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = bytes as f64;

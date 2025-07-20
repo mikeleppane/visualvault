@@ -11,10 +11,7 @@ use crate::app::App;
 #[allow(clippy::significant_drop_tightening)]
 pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
     // Get progress data
-    let progress = match app.progress.try_read() {
-        Ok(p) => p,
-        Err(_) => return, // Skip if we can't get a lock
-    };
+    let Ok(progress) = app.progress.try_read() else { return };
 
     // Create centered overlay area
     let area = centered_rect(60, 30, f.area());
@@ -68,6 +65,9 @@ pub fn draw_progress_overlay(f: &mut Frame, app: &App) {
         "Calculating...".to_string()
     };
 
+    #[allow(clippy::cast_precision_loss)]
+    #[allow(clippy::cast_possible_truncation)]
+    #[allow(clippy::cast_sign_loss)]
     let gauge = Gauge::default()
         .block(Block::default().borders(Borders::NONE))
         .gauge_style(Style::default().fg(Color::Cyan).bg(Color::Rgb(40, 40, 40)))

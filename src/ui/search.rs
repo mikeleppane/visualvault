@@ -54,7 +54,10 @@ fn draw_search_bar(f: &mut Frame, area: Rect, app: &App) {
 
     // Show cursor when in insert mode
     if app.input_mode == InputMode::Insert {
-        f.set_cursor_position((area.x + app.search_input.len() as u16 + 1, area.y + 1));
+        f.set_cursor_position((
+            area.x + u16::try_from(app.search_input.len()).unwrap_or_default() + 1,
+            area.y + 1,
+        ));
     }
 }
 

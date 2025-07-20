@@ -537,8 +537,7 @@ impl App {
                         let needs_metadata = self
                             .cached_files
                             .get(self.selected_file_index)
-                            .map(|f| f.file_type == FileType::Image && f.metadata.is_none())
-                            .unwrap_or(false);
+                            .is_some_and(|f| f.file_type == FileType::Image && f.metadata.is_none());
 
                         if needs_metadata {
                             // Show loading message in status bar
@@ -612,8 +611,7 @@ impl App {
             let format = path_owned
                 .extension()
                 .and_then(|e| e.to_str())
-                .map(|e| e.to_uppercase())
-                .unwrap_or_else(|| "Unknown".to_string());
+                .map_or_else(|| "Unknown".to_string(), str::to_uppercase);
 
             Ok(MediaMetadata::Image(ImageMetadata {
                 width,
@@ -987,11 +985,11 @@ impl App {
         let files_total = files.len();
 
         // Find duplicates if rename_duplicates is false
-        let duplicates = if !settings_clone.rename_duplicates {
+        let duplicates = if settings_clone.rename_duplicates {
+            HashMap::new()
+        } else {
             let mut files_for_hash = files.clone();
             scanner.find_duplicates(&mut files_for_hash, progress.clone()).await?
-        } else {
-            HashMap::new()
         };
 
         // Directly await the organize operation
@@ -1112,10 +1110,7 @@ impl App {
 
         // Extract paths from settings and immediately drop the lock
         {
-            let settings = match self.settings.try_read() {
-                Ok(settings) => settings,
-                Err(_) => return,
-            };
+            let Ok(settings) = self.settings.try_read() else { return };
 
             // Check which paths need updating
             if let Some(source) = &settings.source_folder {
