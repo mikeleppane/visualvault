@@ -1,8 +1,9 @@
 use chrono::{DateTime, Local};
 use color_eyre::eyre::Result;
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::widgets::ListState;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -10,7 +11,11 @@ use tokio::sync::RwLock;
 use tracing::{error, info};
 use walkdir::WalkDir;
 
-use crate::models::Statistics;
+use crate::{
+    core::{DuplicateDetector, DuplicateStats},
+    models::Statistics,
+    utils::format_bytes,
+};
 
 use crate::{
     config::Settings,
@@ -27,6 +32,7 @@ pub enum AppState {
     Organizing,
     Search,
     FileDetails(usize),
+    DuplicateReview,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,13 +79,27 @@ pub struct App {
     pub scroll_offset: usize,
     pub cached_files: Vec<MediaFile>,
     pub search_results: Vec<MediaFile>,
-    pub input_buffer: String,                // Add this field for text input
-    pub editing_field: Option<EditingField>, // Add this to track what we're editing
+    pub input_buffer: String,
+    pub editing_field: Option<EditingField>,
     pub last_scan_result: Option<ScanResult>,
     pub last_organize_result: Option<OrganizeResult>,
-    pub should_quit: bool,                             // Add this field to control quitting
-    pub duplicate_groups: Option<Vec<Vec<MediaFile>>>, // Add this field// Add this for navigating duplicate groups
+    pub should_quit: bool,
+    pub duplicate_groups: Option<Vec<Vec<MediaFile>>>,
     pub folder_stats_cache: HashMap<PathBuf, FolderStats>,
+    pub duplicate_stats: Option<DuplicateStats>,
+    pub duplicate_detector: DuplicateDetector,
+    pub selected_duplicate_group: usize,
+    pub selected_duplicate_items: HashSet<usize>,
+    pub duplicate_list_state: ListState,
+    pub duplicate_focus: DuplicateFocus,
+    pub selected_file_in_group: usize,
+    pub pending_bulk_delete: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum DuplicateFocus {
+    GroupList,
+    FileList,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +112,8 @@ pub enum EditingField {
 
 impl App {
     pub async fn new() -> Result<Self> {
+        let mut duplicate_list_state = ListState::default();
+        duplicate_list_state.select(Some(0));
         let settings = Settings::load().await?;
         let settings_cache = settings.clone();
         let settings = Arc::new(RwLock::new(settings));
@@ -128,6 +150,14 @@ impl App {
             should_quit: false,
             duplicate_groups: None,
             folder_stats_cache: HashMap::new(),
+            duplicate_stats: None,
+            duplicate_detector: DuplicateDetector::new(),
+            selected_duplicate_group: 0,
+            selected_duplicate_items: HashSet::new(),
+            duplicate_list_state,
+            duplicate_focus: DuplicateFocus::GroupList,
+            selected_file_in_group: 0,
+            pending_bulk_delete: false,
         })
     }
 
@@ -174,6 +204,10 @@ impl App {
                     Ok(())
                 };
             }
+            AppState::DuplicateReview => {
+                // For DuplicateReview state, delegate to handle_duplicate_keys
+                return self.handle_duplicate_keys(key).await;
+            }
             _ => {}
         }
 
@@ -217,8 +251,11 @@ impl App {
                 self.state = AppState::Dashboard;
             }
             KeyCode::Char('s') => {
-                self.state = AppState::Settings;
-                self.update_settings_cache().await?;
+                // Only open settings if NOT in DuplicateReview state
+                if self.state != AppState::DuplicateReview {
+                    self.state = AppState::Settings;
+                    self.update_settings_cache().await?;
+                }
             }
             KeyCode::Char('r') => {
                 self.start_scan().await?;
@@ -239,6 +276,9 @@ impl App {
                 self.scroll_offset = 0;
                 self.input_mode = InputMode::Normal;
             }
+            KeyCode::Char('D') => {
+                self.state = AppState::DuplicateReview;
+            }
             _ => {
                 // Handle state-specific keys
                 match self.state {
@@ -251,250 +291,141 @@ impl App {
         Ok(())
     }
 
-    async fn start_editing_field(&mut self, field: EditingField) -> Result<()> {
-        self.input_mode = InputMode::Insert;
-        self.editing_field = Some(field.clone());
-
-        // Pre-populate the input buffer with current value
-        match field {
-            EditingField::SourceFolder => {
-                let settings = self.settings.read().await;
-                self.input_buffer = settings
-                    .source_folder
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_default();
-            }
-            EditingField::DestinationFolder => {
-                let settings = self.settings.read().await;
-                self.input_buffer = settings
-                    .destination_folder
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_default();
-            }
-            EditingField::WorkerThreads => {
-                let settings = self.settings.read().await;
-                self.input_buffer = settings.worker_threads.to_string();
-            }
-            EditingField::BufferSize => {
-                let settings = self.settings.read().await;
-                // Convert bytes back to MB for display
-                self.input_buffer = (settings.buffer_size / (1024 * 1024)).to_string();
-            }
-        }
-
-        Ok(())
-    }
-
-    async fn handle_settings_keys(&mut self, key: KeyEvent) -> Result<()> {
-        use crossterm::event::KeyCode;
-
-        match self.selected_tab {
-            0 => {
-                // General settings tab
-                match key.code {
-                    KeyCode::Up => {
-                        if self.selected_setting > 0 {
-                            self.selected_setting -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        // 4 settings in general tab (source, dest, recurse, verbose)
-                        if self.selected_setting < 3 {
-                            self.selected_setting += 1;
-                        }
-                    }
-                    KeyCode::Enter => match self.selected_setting {
-                        0 => self.start_editing_field(EditingField::SourceFolder).await?,
-                        1 => {
-                            self.start_editing_field(EditingField::DestinationFolder).await?;
-                        }
-                        _ => {}
-                    },
-                    KeyCode::Char(' ') => match self.selected_setting {
-                        2 => self.toggle_selected_setting().await?,
-                        3 => self.toggle_selected_setting().await?,
-                        _ => {}
-                    },
-                    _ => {}
-                }
-            }
-            1 => {
-                // Organization settings tab
-                match key.code {
-                    KeyCode::Up => {
-                        if self.selected_setting > 0 {
-                            self.selected_setting -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        // 10 settings in organization tab (5 modes + 5 options)
-                        if self.selected_setting < 9 {
-                            self.selected_setting += 1;
-                        }
-                    }
-                    KeyCode::Enter | KeyCode::Char(' ') => {
-                        if self.selected_setting < 5 {
-                            // Organization mode selection (0-4)
-                            self.change_organization_mode(self.selected_setting).await?;
-                        } else {
-                            // Toggle options (5-9)
-                            self.toggle_selected_setting().await?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            2 => {
-                // Performance settings tab
-                match key.code {
-                    KeyCode::Up => {
-                        if self.selected_setting > 0 {
-                            self.selected_setting -= 1;
-                        }
-                    }
-                    KeyCode::Down => {
-                        // 6 settings in performance tab
-                        if self.selected_setting < 5 {
-                            self.selected_setting += 1;
-                        }
-                    }
-                    KeyCode::Enter => match self.selected_setting {
-                        0 => {
-                            self.start_editing_field(EditingField::WorkerThreads).await?;
-                        }
-                        1 => self.start_editing_field(EditingField::BufferSize).await?,
-                        _ => {}
-                    },
-                    KeyCode::Char(' ') => {
-                        if self.selected_setting >= 2 {
-                            self.toggle_selected_setting().await?;
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-
-        // Common keys for all tabs
+    #[allow(clippy::too_many_lines)]
+    pub async fn handle_settings_keys(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
-            KeyCode::Char('s' | 'S') => {
+            KeyCode::Char('S' | 's') => {
+                // Save settings
                 self.save_settings().await?;
             }
-            KeyCode::Char('r' | 'R') => {
-                self.reset_settings().await?;
+            KeyCode::Char('R' | 'r') => {
+                // Reset to defaults
+                self.settings_cache = Settings::default();
+                self.success_message = Some("Settings reset to defaults (not saved)".to_string());
+            }
+            KeyCode::Enter => {
+                // Handle editing fields
+                match self.selected_setting {
+                    0 if self.selected_tab == 0 => {
+                        // Source folder
+                        if self.input_mode == InputMode::Normal {
+                            self.input_mode = InputMode::Insert;
+                            self.editing_field = Some(EditingField::SourceFolder);
+                            self.input_buffer = self
+                                .settings_cache
+                                .source_folder
+                                .as_ref()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_default();
+                        } else {
+                            // Save the edited value
+                            self.settings_cache.source_folder = if self.input_buffer.is_empty() {
+                                None
+                            } else {
+                                Some(PathBuf::from(&self.input_buffer))
+                            };
+                            self.input_mode = InputMode::Normal;
+                            self.editing_field = None;
+                        }
+                    }
+                    1 if self.selected_tab == 0 => {
+                        // Destination folder
+                        if self.input_mode == InputMode::Normal {
+                            self.input_mode = InputMode::Insert;
+                            self.editing_field = Some(EditingField::DestinationFolder);
+                            self.input_buffer = self
+                                .settings_cache
+                                .destination_folder
+                                .as_ref()
+                                .map(|p| p.display().to_string())
+                                .unwrap_or_default();
+                        } else {
+                            // Save the edited value
+                            self.settings_cache.destination_folder = if self.input_buffer.is_empty() {
+                                None
+                            } else {
+                                Some(PathBuf::from(&self.input_buffer))
+                            };
+                            self.input_mode = InputMode::Normal;
+                            self.editing_field = None;
+                        }
+                    }
+                    // Add other field handlers...
+                    _ => {}
+                }
+            }
+            KeyCode::Esc => {
+                if self.input_mode == InputMode::Insert {
+                    // Cancel editing
+                    self.input_mode = InputMode::Normal;
+                    self.editing_field = None;
+                    self.input_buffer.clear();
+                } else {
+                    // Exit settings
+                    self.state = AppState::Dashboard;
+                }
+            }
+            KeyCode::Char(' ') => {
+                // Toggle checkboxes
+                match (self.selected_tab, self.selected_setting) {
+                    (0, 2) => self.settings_cache.recurse_subfolders = !self.settings_cache.recurse_subfolders,
+                    (0, 3) => self.settings_cache.verbose_output = !self.settings_cache.verbose_output,
+                    (1, s) if s < 5 => {
+                        // Radio buttons for organization mode
+                        self.settings_cache.organize_by = match s {
+                            1 => "monthly",
+                            2 => "daily",
+                            3 => "type",
+                            4 => "type-date",
+                            _ => "yearly",
+                        }
+                        .to_string();
+                    }
+                    (1, 5) => self.settings_cache.separate_videos = !self.settings_cache.separate_videos,
+                    (1, 6) => {
+                        self.settings_cache.keep_original_structure = !self.settings_cache.keep_original_structure;
+                    }
+                    (1, 7) => self.settings_cache.rename_duplicates = !self.settings_cache.rename_duplicates,
+                    (1, 8) => self.settings_cache.lowercase_extensions = !self.settings_cache.lowercase_extensions,
+                    (1, 9) => self.settings_cache.create_thumbnails = !self.settings_cache.create_thumbnails,
+                    (2, 2) => self.settings_cache.enable_cache = !self.settings_cache.enable_cache,
+                    (2, 3) => self.settings_cache.parallel_processing = !self.settings_cache.parallel_processing,
+                    (2, 4) => self.settings_cache.skip_hidden_files = !self.settings_cache.skip_hidden_files,
+                    (2, 5) => self.settings_cache.optimize_for_ssd = !self.settings_cache.optimize_for_ssd,
+                    _ => {}
+                }
+            }
+            KeyCode::Up => {
+                if self.selected_setting > 0 {
+                    self.selected_setting -= 1;
+                }
+            }
+            KeyCode::Down => {
+                let max_setting = match self.selected_tab {
+                    0 => 3, // General tab: 2 folders + 2 checkboxes
+                    1 => 9, // Organization tab: 5 radio + 5 checkboxes
+                    2 => 5, // Performance tab: 2 inputs + 4 checkboxes
+                    _ => 0,
+                };
+                if self.selected_setting < max_setting {
+                    self.selected_setting += 1;
+                }
             }
             _ => {}
         }
-
-        Ok(())
-    }
-
-    async fn change_organization_mode(&mut self, mode_index: usize) -> Result<()> {
-        let modes = ["yearly", "monthly", "daily", "type", "type-date"];
-
-        if let Some(mode) = modes.get(mode_index) {
-            {
-                let mut settings = self.settings.write().await;
-                settings.organize_by = (*mode).to_string();
-            }
-
-            // Update the cache
-            self.update_settings_cache().await?;
-
-            self.success_message = Some(format!("Organization mode changed to: {mode}"));
-        }
-
-        Ok(())
-    }
-
-    async fn toggle_selected_setting(&mut self) -> Result<()> {
-        match self.selected_tab {
-            0 => {
-                // General tab
-                match self.selected_setting {
-                    2 => {
-                        let mut settings = self.settings.write().await;
-                        settings.recurse_subfolders = !settings.recurse_subfolders;
-                    }
-                    3 => {
-                        let mut settings = self.settings.write().await;
-                        settings.verbose_output = !settings.verbose_output;
-                    }
-                    _ => {}
-                }
-            }
-            1 => {
-                // Organization tab - toggle options (indices 5-9)
-                match self.selected_setting {
-                    5 => {
-                        let mut settings = self.settings.write().await;
-                        settings.separate_videos = !settings.separate_videos;
-                    }
-                    6 => {
-                        let mut settings = self.settings.write().await;
-                        settings.keep_original_structure = !settings.keep_original_structure;
-                    }
-                    7 => {
-                        let mut settings = self.settings.write().await;
-                        settings.rename_duplicates = !settings.rename_duplicates;
-                    }
-                    8 => {
-                        let mut settings = self.settings.write().await;
-                        settings.lowercase_extensions = !settings.lowercase_extensions;
-                    }
-                    9 => {
-                        let mut settings = self.settings.write().await;
-                        settings.create_thumbnails = !settings.create_thumbnails;
-                    }
-                    _ => {}
-                }
-            }
-            2 => {
-                // Performance tab
-                match self.selected_setting {
-                    2 => {
-                        let mut settings = self.settings.write().await;
-                        settings.enable_cache = !settings.enable_cache;
-                    }
-                    3 => {
-                        let mut settings = self.settings.write().await;
-                        settings.parallel_processing = !settings.parallel_processing;
-                    }
-                    4 => {
-                        let mut settings = self.settings.write().await;
-                        settings.skip_hidden_files = !settings.skip_hidden_files;
-                    }
-                    5 => {
-                        let mut settings = self.settings.write().await;
-                        settings.optimize_for_ssd = !settings.optimize_for_ssd;
-                    }
-                    _ => {}
-                }
-            }
-            _ => {}
-        }
-
-        // Update the cache after any change
-        self.update_settings_cache().await?;
-
         Ok(())
     }
 
     async fn save_settings(&mut self) -> Result<()> {
-        let _ = self.settings.read().await;
-        self.success_message = Some("Settings saved successfully".to_string());
-        Ok(())
-    }
-
-    async fn reset_settings(&mut self) -> Result<()> {
+        // Update the actual settings from the cache
         let mut settings = self.settings.write().await;
-        *settings = Settings::default();
+        *settings = self.settings_cache.clone();
+        settings.save()?;
         drop(settings);
-        self.update_settings_cache().await?;
-        self.success_message = Some("Settings reset to defaults".to_string());
+
+        // Update success message
+        self.success_message = Some("Settings saved successfully!".to_string());
+
         Ok(())
     }
 
@@ -880,6 +811,7 @@ impl App {
     }
 
     async fn start_scan(&mut self) -> Result<()> {
+        self.success_message = Some("Starting scan...".to_string());
         let settings = self.settings.read().await;
         let source = settings
             .source_folder
@@ -966,6 +898,7 @@ impl App {
             return Ok(());
         }
         info!("Starting file organization");
+        self.success_message = Some("Starting to organize files...".to_string());
         self.state = AppState::Organizing;
         self.progress.write().await.reset();
 
@@ -1202,6 +1135,225 @@ impl App {
             AppState::Settings => 3,
             _ => 1,
         }
+    }
+
+    pub async fn start_duplicate_scan(&mut self) -> Result<()> {
+        self.error_message = None;
+        self.success_message = Some("Scanning for duplicates...".to_string());
+
+        // Make sure we have files to scan
+        if self.cached_files.is_empty() {
+            self.error_message = Some("No files to scan. Run a file scan first.".to_string());
+            self.success_message = None;
+            return Ok(());
+        }
+
+        // Use cached files for duplicate detection
+        let stats = self
+            .duplicate_detector
+            .detect_duplicates(&self.cached_files, false)
+            .await?;
+
+        let message = if stats.total_groups > 0 {
+            format!(
+                "Found {} duplicate groups with {} files wasting {}",
+                stats.total_groups,
+                stats.total_duplicates,
+                format_bytes(stats.total_wasted_space)
+            )
+        } else {
+            "No duplicates found.".to_string()
+        };
+
+        let has_groups = stats.total_groups > 0;
+        self.duplicate_stats = Some(stats);
+        self.success_message = Some(message);
+        self.state = AppState::DuplicateReview;
+
+        // Reset selection states
+        self.selected_duplicate_group = 0;
+        self.selected_duplicate_items.clear();
+        self.duplicate_list_state
+            .select(if has_groups { Some(0) } else { None });
+
+        Ok(())
+    }
+
+    #[allow(clippy::too_many_lines)]
+    pub async fn handle_duplicate_keys(&mut self, key: KeyEvent) -> Result<()> {
+        if self.pending_bulk_delete {
+            match key.code {
+                KeyCode::Char('y' | 'Y') => {
+                    self.pending_bulk_delete = false;
+                    self.perform_bulk_delete().await?;
+                }
+                KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                    self.pending_bulk_delete = false;
+                    self.error_message = Some("Bulk delete cancelled".to_string());
+                }
+                _ => {}
+            }
+            return Ok(());
+        }
+        match key.code {
+            KeyCode::Esc | KeyCode::Char('q') => {
+                self.state = AppState::Dashboard;
+                self.selected_duplicate_items.clear();
+            }
+            KeyCode::Char('s') => {
+                self.start_duplicate_scan().await?;
+            }
+            KeyCode::Up => match self.duplicate_focus {
+                DuplicateFocus::GroupList => {
+                    if self.selected_duplicate_group > 0 {
+                        self.selected_duplicate_group -= 1;
+                        self.duplicate_list_state.select(Some(self.selected_duplicate_group));
+                        self.selected_duplicate_items.clear();
+                    }
+                }
+                DuplicateFocus::FileList => {
+                    if let Some(stats) = &self.duplicate_stats {
+                        if stats.groups.get(self.selected_duplicate_group).is_some() && self.selected_file_in_group > 0
+                        {
+                            self.selected_file_in_group -= 1;
+                        }
+                    }
+                }
+            },
+            KeyCode::Down => match self.duplicate_focus {
+                DuplicateFocus::GroupList => {
+                    if let Some(stats) = &self.duplicate_stats {
+                        if !stats.groups.is_empty() && self.selected_duplicate_group < stats.groups.len() - 1 {
+                            self.selected_duplicate_group += 1;
+                            self.duplicate_list_state.select(Some(self.selected_duplicate_group));
+                            self.selected_duplicate_items.clear();
+                        }
+                    }
+                }
+                DuplicateFocus::FileList => {
+                    if let Some(stats) = &self.duplicate_stats {
+                        if let Some(group) = stats.groups.get(self.selected_duplicate_group) {
+                            if self.selected_file_in_group < group.files.len() - 1 {
+                                self.selected_file_in_group += 1;
+                            }
+                        }
+                    }
+                }
+            },
+            KeyCode::Left => {
+                self.duplicate_focus = DuplicateFocus::GroupList;
+                self.selected_file_in_group = 0;
+            }
+            KeyCode::Right => {
+                if let Some(stats) = &self.duplicate_stats {
+                    if !stats.groups.is_empty() {
+                        self.duplicate_focus = DuplicateFocus::FileList;
+                        self.selected_file_in_group = 0;
+                    }
+                }
+            }
+            KeyCode::Char(' ') => {
+                if self.duplicate_focus == DuplicateFocus::FileList {
+                    if self.selected_duplicate_items.contains(&self.selected_file_in_group) {
+                        self.selected_duplicate_items.remove(&self.selected_file_in_group);
+                    } else {
+                        self.selected_duplicate_items.insert(self.selected_file_in_group);
+                    }
+                }
+            }
+            KeyCode::Char('a') => {
+                // Select all but the first file in the current group
+                if let Some(stats) = &self.duplicate_stats {
+                    if let Some(group) = stats.groups.get(self.selected_duplicate_group) {
+                        self.selected_duplicate_items.clear();
+                        for i in 1..group.files.len() {
+                            self.selected_duplicate_items.insert(i);
+                        }
+                    }
+                }
+            }
+            KeyCode::Char('d') => {
+                // Delete selected files in current group
+                if !self.selected_duplicate_items.is_empty() {
+                    self.delete_selected_duplicates().await?;
+                }
+            }
+            KeyCode::Char('D') => {
+                // Set pending and show confirmation message
+                if let Some(stats) = &self.duplicate_stats {
+                    if stats.total_duplicates > 0 {
+                        self.pending_bulk_delete = true;
+                        self.error_message = Some(format!(
+                            "⚠️  Delete {} duplicates from {} groups? This will free {}. Press Y to confirm, N to cancel",
+                            stats.total_duplicates,
+                            stats.total_groups,
+                            format_bytes(stats.total_wasted_space)
+                        ));
+                    } else {
+                        self.error_message = Some("No duplicates to delete".to_string());
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    async fn perform_bulk_delete(&mut self) -> Result<()> {
+        if let Some(stats) = &self.duplicate_stats {
+            let mut paths_to_delete = Vec::new();
+
+            // Collect all duplicate files (skip first in each group)
+            for group in &stats.groups {
+                for (idx, file) in group.files.iter().enumerate() {
+                    if idx > 0 {
+                        // Skip the first file (keep it as original)
+                        paths_to_delete.push(file.path.clone());
+                    }
+                }
+            }
+
+            if !paths_to_delete.is_empty() {
+                let total_to_delete = paths_to_delete.len();
+                let deleted = self.duplicate_detector.delete_files(&paths_to_delete).await?;
+
+                self.success_message = Some(format!(
+                    "✅ Successfully deleted {} of {} duplicate files, freed {}",
+                    deleted.len(),
+                    total_to_delete,
+                    format_bytes(stats.total_wasted_space)
+                ));
+
+                // Clear selections and rescan
+                self.selected_duplicate_items.clear();
+                self.start_duplicate_scan().await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn delete_selected_duplicates(&mut self) -> Result<()> {
+        if let Some(stats) = &self.duplicate_stats {
+            if let Some(group) = stats.groups.get(self.selected_duplicate_group) {
+                let mut paths_to_delete = Vec::new();
+
+                for &idx in &self.selected_duplicate_items {
+                    if let Some(file) = group.files.get(idx) {
+                        paths_to_delete.push(file.path.clone());
+                    }
+                }
+
+                if !paths_to_delete.is_empty() {
+                    let deleted = self.duplicate_detector.delete_files(&paths_to_delete).await?;
+                    self.success_message = Some(format!("Deleted {} files", deleted.len()));
+
+                    // Clear selections and rescan
+                    self.selected_duplicate_items.clear();
+                    self.start_duplicate_scan().await?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -1,6 +1,7 @@
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf, str::FromStr};
+use tracing::info;
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -108,6 +109,30 @@ impl Settings {
         } else {
             Ok(Self::default())
         }
+    }
+
+    pub fn save(&self) -> Result<()> {
+        let config_path = Self::config_path()?;
+
+        // Ensure parent directory exists
+        if let Some(parent) = config_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        // Serialize to TOML
+        let toml_string = toml::to_string_pretty(self)?;
+
+        // Write to file
+        std::fs::write(&config_path, toml_string)?;
+
+        info!("Settings saved to {:?}", config_path);
+        Ok(())
+    }
+
+    fn config_path() -> Result<PathBuf> {
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        Ok(config_dir.join("visualvault").join("config.toml"))
     }
 }
 

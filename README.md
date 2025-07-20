@@ -7,12 +7,19 @@ A modern, terminal-based media file organizer built with Rust
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 
 
-## 🎥 Introduction Video
+## 🎥 Introduction Videos
 
 [![Watch the video](https://img.youtube.com/vi/JdzuCGQH1vQ/maxresdefault.jpg)](https://youtu.be/JdzuCGQH1vQ)
 
 <p align="center">
   <i>Click the image above to watch a quick introduction to VisualVault</i>
+</p>
+
+
+[![Watch the video](https://img.youtube.com/vi/uvDJqplAudA/maxresdefault.jpg)](https://youtu.be/uvDJqplAudA)
+
+<p align="center">
+  <i>Click the image above to see VisualVault's Duplicate Detector in action</i>
 </p>
 
 ## 📸 Screenshot

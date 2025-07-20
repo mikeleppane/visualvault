@@ -11,6 +11,7 @@ use crate::app::{App, AppState};
 use crate::utils::format_bytes;
 
 mod dashboard;
+mod duplicate_detector;
 mod file_details;
 mod progress;
 mod search;
@@ -50,6 +51,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             // Draw progress overlay on top
             progress::draw_progress_overlay(f, app);
         }
+        AppState::DuplicateReview => duplicate_detector::draw(f, chunks[1], app),
     }
 
     // Draw status bar
@@ -67,7 +69,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         "╔═══════════════════════════════════════════════════════════════════╗",
         "║  🖼️  ╦  ╦╦╔═╗╦ ╦╔═╗╦    ╦  ╦╔═╗╦ ╦╦  ╔╦╗  🖼️                     ║",
         "║      ╚╗╔╝║╚═╗║ ║╠═╣║    ╚╗╔╝╠═╣║ ║║   ║                           ║",
-        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.2    ║",
+        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.3    ║",
         "╚═══════════════════════════════════════════════════════════════════╝",
     ];
 
@@ -139,6 +141,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         AppState::Organizing => ("📁", "Organizing...", Color::Blue),
         AppState::Search => ("🔎", "Search", Color::White),
         AppState::FileDetails(_) => ("📄", "File Details", Color::White),
+        AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
     };
 
     // Create centered header block
@@ -178,9 +181,9 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(33),
-            Constraint::Percentage(34),
-            Constraint::Percentage(33),
+            Constraint::Percentage(20),
+            Constraint::Percentage(60),
+            Constraint::Percentage(20),
         ])
         .split(area);
 
