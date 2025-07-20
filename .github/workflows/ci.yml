@@ -95,19 +95,19 @@ jobs:
           path: target
           key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
       - name: Install dependencies (Ubuntu)
-        if: ${{ matrix.os }} == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y lld clang
 
       - name: Install dependencies (Windows)
-        if: ${{ matrix.os }} == 'windows-latest'
+        if: matrix.os == 'windows-latest'
         run: |
           choco install llvm -y
           echo "C:\Program Files\LLVM\bin" >> $GITHUB_PATH
 
       - name: Install dependencies (macOS)
-        if: ${{ matrix.os }} == 'macos-latest'
+        if: matrix.os == 'macos-latest'
         run: |
           brew install llvm
           echo "/usr/local/opt/llvm/bin" >> $GITHUB_PATH
