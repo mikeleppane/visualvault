@@ -44,11 +44,23 @@ jobs:
       - name: Build
         run: cargo build --target ${{ matrix.target }} --release
       
+      # Rename the binary to match the asset name to avoid conflicts
+      - name: Rename binary
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            # Windows binary already has .exe extension
+            cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
+          else
+            # Linux and macOS binaries
+            cp ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }} ./${{ matrix.asset_name }}
+          fi
+        shell: bash
+      
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: ./target/${{ matrix.target }}/release/${{ matrix.artifact_name }}
+          path: ./${{ matrix.asset_name }}
 
   create-release:
     name: Create Release
