@@ -89,14 +89,28 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
         .parent()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|| "N/A".to_string());
-    let permissions = if cfg!(unix) {
+    #[cfg(unix)]
+    let permissions = {
         use std::os::unix::fs::PermissionsExt;
         std::fs::metadata(&file.path)
             .ok()
             .map(|m| format!("{:o}", m.permissions().mode() & 0o777))
             .unwrap_or_else(|| "Unknown".to_string())
-    } else {
-        "N/A".to_string()
+    };
+
+    #[cfg(not(unix))]
+    let permissions = {
+        // On Windows, check if file is read-only
+        std::fs::metadata(&file.path)
+            .ok()
+            .map(|m| {
+                if m.permissions().readonly() {
+                    "Read-only".to_string()
+                } else {
+                    "Read/Write".to_string()
+                }
+            })
+            .unwrap_or_else(|| "Unknown".to_string())
     };
 
     let fs_info = vec![
