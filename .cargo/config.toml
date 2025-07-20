@@ -16,10 +16,20 @@ rustflags = [
     "-Dclippy::unnecessary_unwrap",
 ]
 [target.x86_64-unknown-linux-gnu]
-linker = "/usr/bin/clang"
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld", "-C", "target-cpu=native"]
+
+[target.x86_64-pc-windows-msvc]
+linker = "lld-link.exe"
+
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-clang"
+rustflags = ["-C", "link-arg=-fuse-ld=lld", "-C", "target-cpu=native"]
+
+[target.x86_64-apple-darwin]
 rustflags = [
     "-C",
-    "link-arg=--ld-path=/usr/bin/mold",
+    "link-arg=-fuse-ld=/usr/local/opt/llvm/bin/ld64.lld",
     "-C",
     "target-cpu=native",
 ]
