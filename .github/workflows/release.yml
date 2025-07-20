@@ -76,12 +76,40 @@ jobs:
         with:
           path: ./artifacts
       
+      # Debug: List what was downloaded
+      - name: List artifacts
+        run: |
+          echo "Contents of ./artifacts:"
+          find ./artifacts -type f -ls
+      
+      # Move files to have unique names in the root artifacts directory
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          
+          # Move each file from its subdirectory to the release-assets directory
+          # The subdirectories are named after the artifact names
+          if [ -f "./artifacts/visualvault-linux-amd64/visualvault-linux-amd64" ]; then
+            cp "./artifacts/visualvault-linux-amd64/visualvault-linux-amd64" ./release-assets/
+          fi
+          
+          if [ -f "./artifacts/visualvault-windows-amd64.exe/visualvault-windows-amd64.exe" ]; then
+            cp "./artifacts/visualvault-windows-amd64.exe/visualvault-windows-amd64.exe" ./release-assets/
+          fi
+          
+          if [ -f "./artifacts/visualvault-macos-amd64/visualvault-macos-amd64" ]; then
+            cp "./artifacts/visualvault-macos-amd64/visualvault-macos-amd64" ./release-assets/
+          fi
+          
+          echo "Contents of ./release-assets:"
+          ls -la ./release-assets/
+      
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           name: Release ${{ github.ref_name }}
           draft: false
           prerelease: false
-          files: ./artifacts/**/*
+          files: ./release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
