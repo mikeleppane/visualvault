@@ -2,6 +2,7 @@
 name = "visualvault"
 version = "0.2.0"
 edition = "2024"
+rust-version = "1.82"
 
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }

@@ -129,14 +129,14 @@ jobs:
       - name: Run security audit
         run: cargo audit
 
-  #msrv:
-  #  name: Minimum Supported Rust Version
-  #  runs-on: ubuntu-latest
-  #  steps:
-  #    - uses: actions/checkout@v4
-  #    
-  #    - name: Install Rust 1.88
-  #      uses: dtolnay/rust-toolchain@1.88
-  #    
-  #    - name: Check MSRV
-  #      run: cargo check --all-features
+  msrv:
+    name: Minimum Supported Rust Version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust 1.82
+        uses: dtolnay/rust-toolchain@1.82
+
+      - name: Check MSRV
+        run: cargo check --all-features
