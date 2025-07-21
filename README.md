@@ -174,7 +174,119 @@ optimize_for_ssd = false
 ##  🤝 Contributing
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
-Development Setup
+### Development Setup
+
+### 🧪 Testing
+
+VisualVault has a comprehensive test suite to ensure reliability and correctness. We use both standard Rust tests and [cargo-nextest](https://nexte.st/) for improved test execution.
+
+#### Running Tests
+
+```bash
+# Run all tests
+cargo test
+
+# Run tests with output
+cargo test -- --nocapture
+
+# Run tests for a specific module
+cargo test core::scanner::tests
+
+# Run only unit tests
+cargo test --lib
+
+# Run only integration tests
+cargo test --test '*'
+
+# Run tests with nextest (faster, better output)
+cargo nextest run
+
+# Run tests in CI mode
+cargo nextest run --profile ci
+```
+
+#### Test Coverage
+
+The project includes extensive test coverage for all major components:
+
+- **Scanner**: File discovery, metadata extraction, hidden file handling
+- **Organizer**: File organization logic, duplicate handling, naming conflicts
+- **Duplicate Detector**: Hash calculation, duplicate identification, cleanup operations
+- **File Cache**: Persistence, validation, stale entry cleanup
+- **Filters**: Date range parsing, size filtering, media type detection
+- **Utils**: Byte formatting, datetime conversion, media type determination
+
+#### Integration Tests
+
+Integration tests verify the complete workflow:
+
+```bash
+# Run integration tests only
+cargo test --test integration
+
+# Run specific integration test
+cargo test --test integration scanner_finds_all_media_files
+```
+
+#### Test Configuration
+
+For optimal test performance with nextest, create `.config/nextest.toml`:
+
+```toml
+[profile.default]
+failure-output = "immediate-final"
+fail-fast = false
+
+[profile.ci]
+reporter = "junit"
+retries = 0
+fail-fast = true
+```
+
+#### Writing Tests
+
+When contributing, please ensure:
+- All new features have corresponding unit tests
+- Integration tests cover major workflows
+- Tests use descriptive names following Rust conventions
+- Use test fixtures and helper functions to reduce duplication
+
+Example test structure:
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    #[tokio::test]
+    async fn test_scanner_finds_media_files() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        // Test implementation
+        Ok(())
+    }
+}
+```
+
+#### Continuous Integration
+
+Tests run automatically on all pull requests via GitHub Actions:
+- ✅ Unit and integration tests on Linux, macOS, and Windows
+- ✅ Clippy linting with strict warnings
+- ✅ Format checking with rustfmt
+- ✅ Cross-platform build verification
+
+#### Performance Testing
+
+For performance-critical code, we include benchmarks:
+
+```bash
+# Run benchmarks (requires nightly Rust)
+cargo +nightly bench
+
+# Benchmark specific component
+cargo +nightly bench scanner
+```
+
 ## 📝 Roadmap
  * <input disabled="" type="checkbox"> Add video metadata extraction
  * <input disabled="" type="checkbox"> Add export/import functionality

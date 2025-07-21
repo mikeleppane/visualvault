@@ -15,6 +15,17 @@ rustflags = [
     "-Dclippy::await_holding_lock",
     "-Dclippy::unnecessary_unwrap",
 ]
+
+[target.'cfg(test)']
+rustflags = [
+    "-Aclippy::unwrap_used",
+    "-Aclippy::expect_used",
+    "-Aclippy::panic",
+    "-Aclippy::assertions_on_constants",
+    "-Aclippy::too_many_lines",
+]
+
+
 [target.x86_64-unknown-linux-gnu]
 linker = "clang"
 rustflags = ["-C", "link-arg=-fuse-ld=lld", "-C", "target-cpu=native"]
@@ -32,3 +43,6 @@ debug = false
 lto = "fat"
 codegen-units = 1
 panic = "abort"
+
+[alias]
+t = "nextest run"

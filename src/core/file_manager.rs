@@ -1,5 +1,6 @@
 use crate::models::MediaFile;
 
+#[derive(Default)]
 pub struct FileManager {
     files: Vec<MediaFile>,
     filtered_files: Vec<MediaFile>,
@@ -7,6 +8,7 @@ pub struct FileManager {
 }
 
 impl FileManager {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             files: Vec::new(),
@@ -21,6 +23,7 @@ impl FileManager {
         self.filter_active = false;
     }
 
+    #[must_use]
     pub fn get_files(&self) -> Vec<MediaFile> {
         if self.filter_active {
             self.filtered_files.clone()
@@ -28,7 +31,7 @@ impl FileManager {
             self.files.clone()
         }
     }
-
+    #[must_use]
     pub fn get_file_count(&self) -> usize {
         if self.filter_active {
             self.filtered_files.len()

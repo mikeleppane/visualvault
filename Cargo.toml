@@ -1,6 +1,6 @@
 [package]
 name = "visualvault"
-version = "0.4.1"
+version = "0.4.2"
 edition = "2024"
 rust-version = "1.85"
 
@@ -40,5 +40,18 @@ mimalloc = "0.1"
 jemallocator = "0.5"
 
 [dev-dependencies]
-tempfile = "3.10"
+tempfile = "3.20"
 mockall = "0.13.1"
+serde_json = "1.0"
+tokio = { version = "1", features = ["full", "test-util"] }
+color-eyre = "0.6"
+chrono = "0.4"
+pretty_assertions = "1.4"
+
+[[test]]
+name = "integration"
+path = "tests/integration_tests.rs"
+
+#[[test]]
+#name = "system"
+#path = "tests/system_tests.rs"

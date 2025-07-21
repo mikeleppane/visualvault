@@ -131,6 +131,13 @@ pub enum EditingField {
 }
 
 impl App {
+    /// Creates a new App instance with default settings and components.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// - Settings cannot be loaded from the configuration file
+    /// - Scanner cache initialization fails
+    /// - Any other component initialization fails
     pub async fn new() -> Result<Self> {
         let mut duplicate_list_state = ListState::default();
         duplicate_list_state.select(Some(0));
@@ -187,6 +194,10 @@ impl App {
         })
     }
 
+    /// Updates the cached settings from the shared settings.
+    ///
+    /// # Errors
+    /// This function currently cannot fail and always returns `Ok(())`.
     pub async fn update_settings_cache(&mut self) -> Result<()> {
         let settings = self.settings.read().await;
         self.settings_cache = settings.clone();
@@ -194,6 +205,11 @@ impl App {
         Ok(())
     }
 
+    /// Handles keyboard input events and updates application state accordingly.
+    ///
+    /// # Errors
+    /// Returns an error if the key handling operation fails, such as when
+    /// updating settings, performing file operations, or state transitions.
     pub async fn on_key(&mut self, key: KeyEvent) -> Result<()> {
         if self.state == AppState::Search {
             return {
@@ -398,6 +414,10 @@ impl App {
         Ok(())
     }
 
+    /// Handles keyboard input in settings mode.
+    ///
+    /// # Errors
+    /// Returns an error if settings cannot be saved or updated.
     #[allow(clippy::too_many_lines)]
     pub async fn handle_settings_keys(&mut self, key: KeyEvent) -> Result<()> {
         match key.code {
@@ -889,6 +909,10 @@ impl App {
         self.selected_setting = 0; // Reset setting selection when changing tabs
     }
 
+    /// Handles periodic updates and state transitions.
+    ///
+    /// # Errors
+    /// Returns an error if statistics update fails.
     pub async fn on_tick(&mut self) -> Result<()> {
         // Update progress
         if matches!(self.state, AppState::Scanning | AppState::Organizing) {
@@ -1253,6 +1277,7 @@ impl App {
         Ok(())
     }
 
+    #[must_use]
     pub fn get_tab_count(&self) -> usize {
         match self.state {
             AppState::Dashboard => 4,
@@ -1261,6 +1286,10 @@ impl App {
         }
     }
 
+    /// Starts a duplicate file scan operation.
+    ///
+    /// # Errors
+    /// Returns an error if the duplicate detection process fails.
     pub async fn start_duplicate_scan(&mut self) -> Result<()> {
         self.error_message = None;
         self.success_message = Some("Scanning for duplicates...".to_string());
@@ -1303,6 +1332,10 @@ impl App {
         Ok(())
     }
 
+    /// Handles keyboard input in duplicate review mode.
+    ///
+    /// # Errors
+    /// Returns an error if file operations (scanning, deleting) fail.
     #[allow(clippy::too_many_lines)]
     pub async fn handle_duplicate_keys(&mut self, key: KeyEvent) -> Result<()> {
         if self.pending_bulk_delete {

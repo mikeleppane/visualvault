@@ -73,6 +73,7 @@ impl Default for FilterSet {
 }
 
 impl FilterSet {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -122,6 +123,7 @@ impl FilterSet {
         ]
     }
 
+    #[must_use]
     pub fn matches_file(&self, file: &MediaFile) -> bool {
         if !self.is_active {
             return true;
@@ -176,7 +178,14 @@ impl FilterSet {
                 continue;
             }
 
-            let Ok(regex) = Regex::new(&pattern.pattern) else {
+            let regex_result = if pattern.case_sensitive {
+                Regex::new(&pattern.pattern)
+            } else {
+                // For case-insensitive matching, add the (?i) flag to the pattern
+                Regex::new(&format!("(?i){}", pattern.pattern))
+            };
+
+            let Ok(regex) = regex_result else {
                 continue;
             };
 
@@ -186,11 +195,7 @@ impl FilterSet {
                 RegexTarget::Extension => file.path.extension().and_then(|ext| ext.to_str()).unwrap_or(""),
             };
 
-            let matches = if pattern.case_sensitive {
-                regex.is_match(text)
-            } else {
-                regex.is_match(&text.to_lowercase())
-            };
+            let matches = regex.is_match(text);
 
             if !matches {
                 return false;
@@ -209,6 +214,7 @@ impl FilterSet {
         self.is_active = false;
     }
 
+    #[must_use]
     pub fn active_filter_count(&self) -> usize {
         let mut count = 0;
         count += self.date_ranges.len();
@@ -270,5 +276,404 @@ impl FilterSet {
             enabled: true,
         });
         self.is_active = true;
+    }
+}
+
+// ... existing code ...
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::float_cmp)] // For comparing floats in tests
+    #![allow(clippy::panic)]
+    use super::*;
+    use chrono::Local;
+    use std::path::PathBuf;
+
+    fn create_test_media_file() -> MediaFile {
+        MediaFile {
+            path: PathBuf::from("/test/path/image.jpg"),
+            name: "image.jpg".to_string(),
+            extension: "jpg".to_string(),
+            file_type: crate::models::FileType::Image,
+            size: 1024 * 1024 * 5, // 5MB
+            created: Local::now(),
+            modified: Local::now(),
+            hash: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn test_filter_set_default() {
+        let filter_set = FilterSet::default();
+
+        assert!(filter_set.date_ranges.is_empty());
+        assert!(filter_set.size_ranges.is_empty());
+        assert!(!filter_set.media_types.is_empty());
+        assert!(filter_set.regex_patterns.is_empty());
+        assert!(!filter_set.is_active);
+
+        // Check default media types
+        assert_eq!(filter_set.media_types.len(), 5);
+
+        // Images and Videos should be enabled by default
+        assert!(filter_set.media_types[0].enabled); // Images
+        assert!(filter_set.media_types[1].enabled); // Videos
+        assert!(!filter_set.media_types[2].enabled); // Audio
+        assert!(!filter_set.media_types[3].enabled); // Documents
+        assert!(!filter_set.media_types[4].enabled); // Archives
+    }
+
+    #[test]
+    fn test_filter_set_new() {
+        let filter_set = FilterSet::new();
+        assert_eq!(filter_set.date_ranges.len(), 0);
+        assert_eq!(filter_set.active_filter_count(), 2); // Images and Videos enabled by default
+    }
+
+    #[test]
+    fn test_matches_file_inactive_filter() {
+        let filter_set = FilterSet::new();
+        let file = create_test_media_file();
+
+        // When filter is inactive, all files should match
+        assert!(filter_set.matches_file(&file));
+    }
+
+    #[test]
+    fn test_matches_file_date_range() {
+        let mut filter_set = FilterSet::new();
+        let mut file = create_test_media_file();
+
+        let yesterday = Local::now() - chrono::Duration::days(1);
+        let tomorrow = Local::now() + chrono::Duration::days(1);
+        let last_week = Local::now() - chrono::Duration::days(7);
+
+        // Test file within date range
+        filter_set.add_date_range("Recent".to_string(), Some(yesterday), Some(tomorrow));
+        assert!(filter_set.matches_file(&file));
+
+        // Test file outside date range
+        file.modified = last_week;
+        assert!(!filter_set.matches_file(&file));
+
+        // Test open-ended date range (no end date)
+        filter_set.date_ranges.clear();
+        filter_set.add_date_range(
+            "After last month".to_string(),
+            Some(Local::now() - chrono::Duration::days(30)),
+            None,
+        );
+        file.modified = Local::now();
+        assert!(filter_set.matches_file(&file));
+
+        // Test open-ended date range (no start date)
+        filter_set.date_ranges.clear();
+        filter_set.add_date_range("Before today".to_string(), None, Some(Local::now()));
+        assert!(filter_set.matches_file(&file));
+    }
+
+    #[test]
+    fn test_matches_file_size_range() {
+        let mut filter_set = FilterSet::new();
+        let mut file = create_test_media_file();
+
+        // Test file within size range (1MB - 10MB)
+        filter_set.add_size_range("Medium files".to_string(), Some(1.0), Some(10.0));
+        assert!(filter_set.matches_file(&file)); // 5MB file
+
+        // Test file outside size range
+        file.size = 1024 * 1024 * 20; // 20MB
+        assert!(!filter_set.matches_file(&file));
+
+        // Test open-ended size range (minimum only)
+        filter_set.size_ranges.clear();
+        filter_set.add_size_range("Large files".to_string(), Some(15.0), None);
+        assert!(filter_set.matches_file(&file)); // 20MB > 15MB
+
+        // Test open-ended size range (maximum only)
+        filter_set.size_ranges.clear();
+        filter_set.add_size_range("Small files".to_string(), None, Some(30.0));
+        assert!(filter_set.matches_file(&file)); // 20MB < 30MB
+    }
+
+    #[test]
+    fn test_matches_file_media_types() {
+        let mut filter_set = FilterSet::new();
+        let mut file = create_test_media_file();
+
+        filter_set.is_active = true; // Activate filters
+
+        // JPG should match enabled Image type
+        assert!(filter_set.matches_file(&file));
+
+        // Disable Images, enable only Videos
+        filter_set.media_types[0].enabled = false; // Disable Images
+        filter_set.media_types[1].enabled = true; // Enable Videos
+        assert!(!filter_set.matches_file(&file));
+
+        // Change file to video
+        file.path = PathBuf::from("/test/video.mp4");
+        file.extension = "mp4".to_string();
+        assert!(filter_set.matches_file(&file));
+
+        // Test case-insensitive extension matching
+        file.extension = "MP4".to_string();
+        assert!(filter_set.matches_file(&file));
+    }
+
+    #[test]
+    fn test_matches_file_regex_patterns() {
+        let mut filter_set = FilterSet::new();
+        let file = create_test_media_file();
+
+        filter_set.is_active = true; // Activate filters
+
+        // Test filename regex
+        filter_set.add_regex_pattern(r"^image.*\.jpg$".to_string(), RegexTarget::FileName, false);
+        assert!(filter_set.matches_file(&file));
+
+        // Test case-sensitive regex
+        filter_set.regex_patterns.clear();
+        filter_set.add_regex_pattern(r"IMAGE".to_string(), RegexTarget::FileName, true);
+        assert!(!filter_set.matches_file(&file)); // "image.jpg" doesn't contain "IMAGE"
+
+        // Test case-insensitive regex
+        filter_set.regex_patterns.clear();
+        filter_set.add_regex_pattern(r"IMAGE".to_string(), RegexTarget::FileName, false);
+        assert!(filter_set.matches_file(&file));
+
+        // Test file path regex
+        filter_set.regex_patterns.clear();
+        filter_set.add_regex_pattern(r"/test/path/".to_string(), RegexTarget::FilePath, false);
+        assert!(filter_set.matches_file(&file));
+
+        // Test extension regex
+        filter_set.regex_patterns.clear();
+        filter_set.add_regex_pattern(r"^jpg$".to_string(), RegexTarget::Extension, false);
+        assert!(filter_set.matches_file(&file));
+
+        // Test disabled pattern
+        filter_set.regex_patterns[0].enabled = false;
+        assert!(filter_set.matches_file(&file)); // Should match when pattern is disabled
+    }
+
+    #[test]
+    fn test_matches_file_combined_filters() {
+        let mut filter_set = FilterSet::new();
+        let file = create_test_media_file();
+
+        // Add multiple filters - file must match ALL active filters
+        filter_set.add_date_range(
+            "Recent".to_string(),
+            Some(Local::now() - chrono::Duration::days(1)),
+            Some(Local::now() + chrono::Duration::days(1)),
+        );
+        filter_set.add_size_range("Medium".to_string(), Some(1.0), Some(10.0));
+        filter_set.add_regex_pattern(r"\.jpg$".to_string(), RegexTarget::FileName, false);
+
+        // File matches all filters
+        assert!(filter_set.matches_file(&file));
+
+        // Change one filter to not match
+        filter_set.size_ranges[0].max_bytes = Some(1024 * 1024); // 1MB max
+        assert!(!filter_set.matches_file(&file)); // 5MB file doesn't match
+    }
+
+    #[test]
+    fn test_clear_all() {
+        let mut filter_set = FilterSet::new();
+
+        // Add various filters
+        filter_set.add_date_range("Test".to_string(), None, None);
+        filter_set.add_size_range("Test".to_string(), Some(1.0), None);
+        filter_set.add_regex_pattern("test".to_string(), RegexTarget::FileName, false);
+
+        assert!(filter_set.is_active);
+        assert!(!filter_set.date_ranges.is_empty());
+        assert!(!filter_set.size_ranges.is_empty());
+        assert!(!filter_set.regex_patterns.is_empty());
+
+        // Clear all filters
+        filter_set.clear_all();
+
+        assert!(!filter_set.is_active);
+        assert!(filter_set.date_ranges.is_empty());
+        assert!(filter_set.size_ranges.is_empty());
+        assert!(filter_set.regex_patterns.is_empty());
+
+        // Media types should be reset to defaults
+        assert_eq!(filter_set.media_types.len(), 5);
+        assert!(filter_set.media_types[0].enabled); // Images
+        assert!(filter_set.media_types[1].enabled); // Videos
+    }
+
+    #[test]
+    fn test_active_filter_count() {
+        let mut filter_set = FilterSet::new();
+
+        // Default: 2 media types enabled
+        assert_eq!(filter_set.active_filter_count(), 2);
+
+        // Add filters
+        filter_set.add_date_range("Test".to_string(), None, None);
+        assert_eq!(filter_set.active_filter_count(), 3);
+
+        filter_set.add_size_range("Test".to_string(), Some(1.0), None);
+        assert_eq!(filter_set.active_filter_count(), 4);
+
+        filter_set.add_regex_pattern("test".to_string(), RegexTarget::FileName, false);
+        assert_eq!(filter_set.active_filter_count(), 5);
+
+        // Disable a media type
+        filter_set.media_types[0].enabled = false;
+        assert_eq!(filter_set.active_filter_count(), 4);
+
+        // Disable a regex pattern
+        filter_set.regex_patterns[0].enabled = false;
+        assert_eq!(filter_set.active_filter_count(), 3);
+    }
+
+    #[test]
+    fn test_media_type_display() {
+        assert_eq!(MediaType::Image.to_string(), "Images");
+        assert_eq!(MediaType::Video.to_string(), "Videos");
+        assert_eq!(MediaType::Audio.to_string(), "Audio");
+        assert_eq!(MediaType::Document.to_string(), "Documents");
+        assert_eq!(MediaType::Archive.to_string(), "Archives");
+        assert_eq!(MediaType::Other.to_string(), "Other");
+    }
+
+    #[test]
+    fn test_regex_target_display() {
+        assert_eq!(RegexTarget::FileName.to_string(), "File Name");
+        assert_eq!(RegexTarget::FilePath.to_string(), "Full Path");
+        assert_eq!(RegexTarget::Extension.to_string(), "Extension");
+    }
+
+    #[test]
+    fn test_default_media_types() {
+        let media_types = FilterSet::default_media_types();
+
+        assert_eq!(media_types.len(), 5);
+
+        // Check Image extensions
+        let image_filter = &media_types[0];
+        assert_eq!(image_filter.media_type, MediaType::Image);
+        assert!(image_filter.extensions.contains(&"jpg".to_string()));
+        assert!(image_filter.extensions.contains(&"png".to_string()));
+        assert!(image_filter.extensions.contains(&"gif".to_string()));
+        assert!(image_filter.enabled);
+
+        // Check Video extensions
+        let video_filter = &media_types[1];
+        assert_eq!(video_filter.media_type, MediaType::Video);
+        assert!(video_filter.extensions.contains(&"mp4".to_string()));
+        assert!(video_filter.extensions.contains(&"avi".to_string()));
+        assert!(video_filter.extensions.contains(&"mkv".to_string()));
+        assert!(video_filter.enabled);
+
+        // Check Audio is disabled by default
+        assert!(!media_types[2].enabled);
+    }
+
+    #[test]
+    fn test_size_range_conversion() {
+        let mut filter_set = FilterSet::new();
+
+        // Test exact conversion
+        filter_set.add_size_range("Test".to_string(), Some(1.5), Some(2.5));
+        let range = &filter_set.size_ranges[0];
+
+        assert_eq!(range.min_bytes, Some(1024 * 1024 + 512 * 1024)); // 1.5MB
+        assert_eq!(range.max_bytes, Some(2 * 1024 * 1024 + 512 * 1024)); // 2.5MB
+
+        // Test with None values
+        filter_set.size_ranges.clear();
+        filter_set.add_size_range("Test".to_string(), None, Some(10.0));
+        let range = &filter_set.size_ranges[0];
+
+        assert_eq!(range.min_bytes, None);
+        assert_eq!(range.max_bytes, Some(10 * 1024 * 1024));
+    }
+
+    #[test]
+    fn test_file_with_no_extension() {
+        let mut filter_set = FilterSet::new();
+        filter_set.is_active = true; // Activate filtering
+
+        let mut file = create_test_media_file();
+        file.path = PathBuf::from("/test/noextension");
+        file.extension = String::new();
+
+        // Should not match any media type filter when extension is empty
+        assert!(!filter_set.matches_file(&file));
+
+        // Test with all media types disabled
+        for media_type in &mut filter_set.media_types {
+            media_type.enabled = false;
+        }
+        // When no media types are enabled, it should match (no media type filtering)
+        assert!(filter_set.matches_file(&file));
+    }
+
+    #[test]
+    fn test_invalid_regex_pattern() {
+        let mut filter_set = FilterSet::new();
+
+        // Add an invalid regex pattern
+        filter_set.add_regex_pattern(r"[invalid regex".to_string(), RegexTarget::FileName, false);
+
+        // Should still match files (invalid regex is ignored)
+        let file = create_test_media_file();
+        assert!(filter_set.matches_file(&file));
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        let mut filter_set = FilterSet::new();
+        let mut file = create_test_media_file();
+
+        // Make filter active to test filtering behavior
+        filter_set.is_active = true;
+
+        // Test file with no extension
+        file.path = PathBuf::from("/test/noextension");
+        file.extension = String::new();
+
+        // Should not match any media type filter
+        assert!(!filter_set.matches_file(&file));
+
+        // Reset for next test
+        filter_set = FilterSet::new();
+
+        // Test invalid regex pattern
+        filter_set.add_regex_pattern(r"[invalid regex".to_string(), RegexTarget::FileName, false);
+        // Should still match (invalid regex is ignored)
+        assert!(filter_set.matches_file(&create_test_media_file()));
+
+        // Test file with None path in to_str()
+        // This is harder to test directly, but the code handles it
+    }
+
+    #[test]
+    fn test_serialization() {
+        let mut filter_set = FilterSet::new();
+        filter_set.add_date_range("Test".to_string(), Some(Local::now()), None);
+        filter_set.add_size_range("Test".to_string(), Some(1.0), Some(10.0));
+        filter_set.add_regex_pattern("test".to_string(), RegexTarget::FileName, true);
+
+        // Serialize to JSON
+        let json = serde_json::to_string(&filter_set).unwrap();
+
+        // Deserialize back
+        let deserialized: FilterSet = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(filter_set.date_ranges.len(), deserialized.date_ranges.len());
+        assert_eq!(filter_set.size_ranges.len(), deserialized.size_ranges.len());
+        assert_eq!(filter_set.regex_patterns.len(), deserialized.regex_patterns.len());
+        assert_eq!(filter_set.is_active, deserialized.is_active);
     }
 }

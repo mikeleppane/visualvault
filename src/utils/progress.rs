@@ -9,8 +9,8 @@ pub struct Progress {
     pub is_complete: bool,
 }
 
-impl Progress {
-    pub fn new() -> Self {
+impl Default for Progress {
+    fn default() -> Self {
         Self {
             current: 0,
             total: 0,
@@ -18,6 +18,13 @@ impl Progress {
             started_at: Instant::now(),
             is_complete: false,
         }
+    }
+}
+
+impl Progress {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn reset(&mut self) {
@@ -47,6 +54,7 @@ impl Progress {
     }
 
     #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn percentage(&self) -> f64 {
         if self.total == 0 {
             0.0
@@ -54,13 +62,14 @@ impl Progress {
             (self.current as f64 / self.total as f64) * 100.0
         }
     }
-
+    #[must_use]
     pub fn elapsed(&self) -> std::time::Duration {
         self.started_at.elapsed()
     }
 
     #[allow(clippy::missing_docs_in_private_items)]
     #[allow(clippy::cast_precision_loss)]
+    #[must_use]
     pub fn eta(&self) -> Option<std::time::Duration> {
         if self.current == 0 || self.total == 0 {
             return None;

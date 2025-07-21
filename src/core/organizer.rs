@@ -21,14 +21,29 @@ pub struct FileOrganizer {
     result: Arc<Mutex<Option<Result<usize>>>>,
 }
 
-impl FileOrganizer {
-    pub fn new() -> Self {
+impl Default for FileOrganizer {
+    fn default() -> Self {
         Self {
             is_organizing: Arc::new(Mutex::new(false)),
             result: Arc::new(Mutex::new(None)),
         }
     }
+}
 
+impl FileOrganizer {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Organizes files into the configured destination folder, handling duplicates according to settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The destination folder is not configured in settings
+    /// - File system operations fail (creating directories, moving files)
+    /// - The organization mode in settings is invalid
     pub async fn organize_files_with_duplicates(
         &self,
         files: Vec<MediaFile>,
@@ -249,5 +264,568 @@ impl FileOrganizer {
 
     pub async fn get_result(&self) -> Option<Result<usize>> {
         self.result.lock().await.take()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::float_cmp)] // For comparing floats in tests
+    #![allow(clippy::panic)]
+    use super::*;
+    use chrono::{DateTime, Local, TimeZone};
+    use tempfile::TempDir;
+    use tokio::fs;
+
+    // Helper function to create a test media file
+    fn create_test_media_file(
+        path: PathBuf,
+        name: String,
+        file_type: FileType,
+        modified: DateTime<Local>,
+        hash: Option<String>,
+    ) -> MediaFile {
+        let extension = path.extension().unwrap_or_default().to_string_lossy().to_string();
+
+        MediaFile {
+            path,
+            name,
+            extension,
+            file_type,
+            size: 1024,
+            created: modified,
+            modified,
+            hash,
+            metadata: None,
+        }
+    }
+
+    // Helper function to create test settings
+    fn create_test_settings(destination: PathBuf) -> Settings {
+        Settings {
+            destination_folder: Some(destination),
+            organize_by: "monthly".to_string(),
+            rename_duplicates: false,
+            separate_videos: true,
+            lowercase_extensions: false,
+            ..Default::default()
+        }
+    }
+
+    // Helper function to create a test file on disk
+    async fn create_test_file(path: &Path, content: &[u8]) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).await?;
+        }
+        fs::write(path, content).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_file_organizer_creation() {
+        let organizer = FileOrganizer::new();
+        assert!(organizer.is_complete().await);
+        assert!(organizer.get_result().await.is_none());
+    }
+
+    #[test]
+    fn test_determine_target_directory_yearly() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let destination = temp_dir.path();
+        let settings = Settings {
+            organize_by: "yearly".to_string(),
+            separate_videos: false,
+            ..create_test_settings(destination.to_path_buf())
+        };
+
+        let file = create_test_media_file(
+            PathBuf::from("/source/image.jpg"),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let target_dir = FileOrganizer::determine_target_directory(&file, destination, &settings)?;
+        assert_eq!(target_dir, destination.join("2024"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_determine_target_directory_monthly() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let destination = temp_dir.path();
+        let settings = Settings {
+            organize_by: "monthly".to_string(),
+            separate_videos: false,
+            ..create_test_settings(destination.to_path_buf())
+        };
+
+        let file = create_test_media_file(
+            PathBuf::from("/source/image.jpg"),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let target_dir = FileOrganizer::determine_target_directory(&file, destination, &settings)?;
+        assert_eq!(target_dir, destination.join("2024").join("03-March"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_determine_target_directory_daily() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let destination = temp_dir.path();
+        let settings = Settings {
+            organize_by: "daily".to_string(),
+            separate_videos: false,
+            ..create_test_settings(destination.to_path_buf())
+        };
+
+        let file = create_test_media_file(
+            PathBuf::from("/source/image.jpg"),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let target_dir = FileOrganizer::determine_target_directory(&file, destination, &settings)?;
+        assert_eq!(target_dir, destination.join("2024").join("03-March").join("15-Friday"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_determine_target_directory_separate_videos() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let destination = temp_dir.path();
+        let settings = Settings {
+            organize_by: "monthly".to_string(),
+            separate_videos: true,
+            ..create_test_settings(destination.to_path_buf())
+        };
+
+        let video_file = create_test_media_file(
+            PathBuf::from("/source/video.mp4"),
+            "video.mp4".to_string(),
+            FileType::Video,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let target_dir = FileOrganizer::determine_target_directory(&video_file, destination, &settings)?;
+        assert_eq!(target_dir, destination.join("Videos").join("2024").join("03-March"));
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_generate_unique_name() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let dir = temp_dir.path();
+
+        // Create existing files
+        std::fs::write(dir.join("image.jpg"), b"data")?;
+        std::fs::write(dir.join("image (1).jpg"), b"data")?;
+
+        // Test generating unique name
+        let unique_name = FileOrganizer::generate_unique_name(dir, "image.jpg")?;
+        assert_eq!(unique_name, "image (2).jpg");
+
+        // Create the next file and test again
+        std::fs::write(dir.join("image (2).jpg"), b"data")?;
+        let unique_name = FileOrganizer::generate_unique_name(dir, "image.jpg")?;
+        assert_eq!(unique_name, "image (3).jpg");
+
+        // Test with file without extension
+        std::fs::write(dir.join("file"), b"data")?;
+        let unique_name = FileOrganizer::generate_unique_name(dir, "file")?;
+        assert_eq!(unique_name, "file (1)");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_type_folder() {
+        let settings = Settings {
+            separate_videos: true,
+            ..Default::default()
+        };
+
+        // Test image
+        let image_file = create_test_media_file(
+            PathBuf::from("image.jpg"),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local::now(),
+            None,
+        );
+        assert_eq!(FileOrganizer::get_type_folder(&image_file, &settings), "Images");
+
+        // Test video with separate_videos = true
+        let video_file = create_test_media_file(
+            PathBuf::from("video.mp4"),
+            "video.mp4".to_string(),
+            FileType::Video,
+            Local::now(),
+            None,
+        );
+        assert_eq!(FileOrganizer::get_type_folder(&video_file, &settings), "Videos");
+
+        // Test video with separate_videos = false
+        let settings_no_separate = Settings {
+            separate_videos: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            FileOrganizer::get_type_folder(&video_file, &settings_no_separate),
+            "Media"
+        );
+
+        // Test document
+        let doc_file = create_test_media_file(
+            PathBuf::from("doc.pdf"),
+            "doc.pdf".to_string(),
+            FileType::Document,
+            Local::now(),
+            None,
+        );
+        assert_eq!(FileOrganizer::get_type_folder(&doc_file, &settings), "Documents");
+
+        // Test other
+        let other_file = create_test_media_file(
+            PathBuf::from("file.xyz"),
+            "file.xyz".to_string(),
+            FileType::Other,
+            Local::now(),
+            None,
+        );
+        assert_eq!(FileOrganizer::get_type_folder(&other_file, &settings), "Other");
+    }
+
+    #[tokio::test]
+    async fn test_organize_file_basic() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+        fs::create_dir_all(&dest_dir).await?;
+
+        // Create a test file
+        let source_file = source_dir.join("image.jpg");
+        create_test_file(&source_file, b"test data").await?;
+
+        let file = create_test_media_file(
+            source_file.clone(),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let settings = create_test_settings(dest_dir.clone());
+        let organizer = FileOrganizer::new();
+
+        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+
+        // Check file was moved to correct location
+        assert_eq!(result, dest_dir.join("2024").join("03-March").join("image.jpg"));
+        assert!(result.exists());
+        assert!(!source_file.exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_file_lowercase_extension() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+        fs::create_dir_all(&dest_dir).await?;
+
+        // Create a test file with uppercase extension
+        let source_file = source_dir.join("IMAGE.JPG");
+        create_test_file(&source_file, b"test data").await?;
+
+        let file = create_test_media_file(
+            source_file.clone(),
+            "IMAGE.JPG".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let mut settings = create_test_settings(dest_dir.clone());
+        settings.lowercase_extensions = true;
+
+        let organizer = FileOrganizer::new();
+        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+
+        // Check file was renamed with lowercase extension
+        assert_eq!(result, dest_dir.join("2024").join("03-March").join("IMAGE.jpg"));
+        assert!(result.exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_file_rename_duplicates() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+        fs::create_dir_all(&dest_dir).await?;
+
+        // Create target directory and existing file
+        let target_dir = dest_dir.join("2024").join("03-March");
+        fs::create_dir_all(&target_dir).await?;
+        create_test_file(&target_dir.join("image.jpg"), b"existing").await?;
+
+        // Create source file
+        let source_file = source_dir.join("image.jpg");
+        create_test_file(&source_file, b"new data").await?;
+
+        let file = create_test_media_file(
+            source_file.clone(),
+            "image.jpg".to_string(),
+            FileType::Image,
+            Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap(),
+            None,
+        );
+
+        let mut settings = create_test_settings(dest_dir.clone());
+        settings.rename_duplicates = true;
+
+        let organizer = FileOrganizer::new();
+        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+
+        // Check file was renamed
+        assert_eq!(result, target_dir.join("image (1).jpg"));
+        assert!(result.exists());
+        assert!(target_dir.join("image.jpg").exists()); // Original still exists
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_files_with_duplicates_skip() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create duplicate files
+        let file1_path = source_dir.join("image1.jpg");
+        let file2_path = source_dir.join("image2.jpg");
+        let file3_path = source_dir.join("unique.jpg");
+
+        create_test_file(&file1_path, b"duplicate data").await?;
+        create_test_file(&file2_path, b"duplicate data").await?;
+        create_test_file(&file3_path, b"unique data").await?;
+
+        let modified_old = Local.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
+        let modified_new = Local.with_ymd_and_hms(2024, 2, 1, 10, 0, 0).unwrap();
+
+        let files = vec![
+            create_test_media_file(
+                file1_path.clone(),
+                "image1.jpg".to_string(),
+                FileType::Image,
+                modified_old,
+                Some("hash1".to_string()),
+            ),
+            create_test_media_file(
+                file2_path.clone(),
+                "image2.jpg".to_string(),
+                FileType::Image,
+                modified_new,
+                Some("hash1".to_string()),
+            ),
+            create_test_media_file(
+                file3_path.clone(),
+                "unique.jpg".to_string(),
+                FileType::Image,
+                modified_new,
+                Some("hash2".to_string()),
+            ),
+        ];
+
+        let mut duplicates = AHashMap::new();
+        duplicates.insert("hash1".to_string(), vec![files[0].clone(), files[1].clone()]);
+
+        let mut settings = create_test_settings(dest_dir.clone());
+        settings.rename_duplicates = false;
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, duplicates, &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 2); // Only oldest duplicate and unique file
+        assert_eq!(result.files_total, 3);
+        assert_eq!(result.skipped_duplicates, 1);
+        assert!(result.success);
+
+        // Check that only the older duplicate was kept
+        assert!(dest_dir.join("2024").join("01-January").join("image1.jpg").exists());
+        assert!(!dest_dir.join("2024").join("02-February").join("image2.jpg").exists());
+        assert!(dest_dir.join("2024").join("02-February").join("unique.jpg").exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_files_with_duplicates_rename() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create duplicate files
+        let file1_path = source_dir.join("image1.jpg");
+        let file2_path = source_dir.join("image2.jpg");
+
+        create_test_file(&file1_path, b"duplicate data").await?;
+        create_test_file(&file2_path, b"duplicate data").await?;
+
+        let modified = Local.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
+
+        let files = vec![
+            create_test_media_file(
+                file1_path.clone(),
+                "image1.jpg".to_string(),
+                FileType::Image,
+                modified,
+                Some("hash1".to_string()),
+            ),
+            create_test_media_file(
+                file2_path.clone(),
+                "image2.jpg".to_string(),
+                FileType::Image,
+                modified,
+                Some("hash1".to_string()),
+            ),
+        ];
+
+        let mut duplicates = AHashMap::new();
+        duplicates.insert("hash1".to_string(), files.clone());
+
+        let mut settings = create_test_settings(dest_dir.clone());
+        settings.rename_duplicates = true;
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, duplicates, &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 2); // Both files organized
+        assert_eq!(result.skipped_duplicates, 0);
+        assert!(result.success);
+
+        // Check both files were organized
+        assert!(dest_dir.join("2024").join("01-January").join("image1.jpg").exists());
+        assert!(dest_dir.join("2024").join("01-January").join("image2.jpg").exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_files_no_destination() -> Result<()> {
+        let settings = Settings {
+            destination_folder: None,
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(vec![], AHashMap::new(), &settings, progress)
+            .await;
+
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Destination folder not configured")
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_files_invalid_mode() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let mut settings = create_test_settings(temp_dir.path().to_path_buf());
+        settings.organize_by = "invalid_mode".to_string();
+
+        let file = create_test_media_file(
+            PathBuf::from("test.jpg"),
+            "test.jpg".to_string(),
+            FileType::Image,
+            Local::now(),
+            None,
+        );
+
+        let result = FileOrganizer::determine_target_directory(&file, temp_dir.path(), &settings);
+        assert!(result.is_err());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_progress_tracking() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create test files
+        let mut files = vec![];
+        for i in 0..5 {
+            let file_path = source_dir.join(format!("image{i}.jpg"));
+            create_test_file(&file_path, b"data").await?;
+            files.push(create_test_media_file(
+                file_path,
+                format!("image{i}.jpg"),
+                FileType::Image,
+                Local::now(),
+                None,
+            ));
+        }
+
+        let settings = create_test_settings(dest_dir.clone());
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress.clone())
+            .await?;
+
+        let prog = progress.read().await;
+        assert_eq!(prog.total, 5);
+        assert_eq!(prog.current, 5);
+        assert_eq!(result.files_organized, 5);
+        drop(prog);
+
+        Ok(())
     }
 }

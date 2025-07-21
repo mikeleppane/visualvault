@@ -7,7 +7,10 @@ use ratatui::{
 };
 use tracing::info;
 
-use crate::models::{FileType, MediaFile, MediaMetadata};
+use crate::{
+    models::{FileType, MediaFile, MediaMetadata},
+    utils::format_bytes,
+};
 
 #[allow(clippy::too_many_lines)]
 pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
@@ -209,24 +212,4 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
             Constraint::Percentage((100 - percent_x) / 2),
         ])
         .split(popup_layout[1])[1]
-}
-
-#[allow(clippy::cast_precision_loss)]
-#[allow(clippy::cast_possible_truncation)]
-#[allow(clippy::cast_sign_loss)]
-fn format_bytes(bytes: u64) -> String {
-    const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
-    let mut size = bytes as f64;
-    let mut unit_index = 0;
-
-    while size >= 1024.0 && unit_index < UNITS.len() - 1 {
-        size /= 1024.0;
-        unit_index += 1;
-    }
-
-    if unit_index == 0 {
-        format!("{} {}", size as u64, UNITS[unit_index])
-    } else {
-        format!("{:.2} {}", size, UNITS[unit_index])
-    }
 }
