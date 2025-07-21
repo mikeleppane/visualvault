@@ -29,21 +29,62 @@ A modern, terminal-based media file organizer built with Rust
 </p>
 
 ## ✨ Features
+
 ### 🎯 Core Functionality
-Smart Organization: Automatically organize media files by date, type, or custom rules  
-Duplicate Detection: Find and manage duplicate files across your collection  
-Metadata Extraction: Extract EXIF data from images for intelligent organization  
-Batch Processing: Handle thousands of files efficiently with async operations  
-### 🖥️ Terminal UI
-Modern TUI: Beautiful terminal interface built with Ratatui  
-Real-time Progress: Live progress tracking for all operations  
-Interactive Dashboard: View statistics and insights about your media collection  
-Keyboard Navigation: Fully keyboard-driven interface for power users  
-### ⚡ Performance
-Async/Await: Built on Tokio for blazing-fast concurrent operations  
-Configurable Workers: Adjust thread count for optimal performance  
-Smart Caching: Efficient file metadata caching  
-SSD Optimization: Special settings for solid-state drives  
+- **Smart Organization**: Automatically organize media files by date, type, or custom rules with multiple organization modes
+- **Advanced Duplicate Detection**: Find and manage duplicate files with intelligent grouping and bulk cleanup operations
+- **Metadata Extraction**: Extract comprehensive EXIF data from images for intelligent organization and insights
+- **Batch Processing**: Handle thousands of files efficiently with async operations and configurable worker threads
+- **Advanced Search**: Powerful search functionality with real-time filtering and partial matches
+- **Smart Filtering System**: Multi-criteria filtering by date ranges, file sizes, media types, and regex patterns
+
+### 🔍 Advanced Filtering & Search
+- **Date Range Filters**: Filter by specific dates, ranges, or presets like "last 7 days", "today", "last month"
+- **Size-Based Filtering**: Filter by file sizes with intuitive syntax (">10MB", "<1GB", "10MB-100MB")
+- **Media Type Filtering**: Toggle different file types (images, videos, audio, documents, archives)
+- **Regex Pattern Matching**: Advanced pattern matching on filenames, paths, or extensions
+- **Multi-Filter Support**: Combine multiple filters of each type for complex queries
+- **Real-Time Search**: Live search with instant results as you type
+
+### 🔄 Duplicate Management
+- **Intelligent Duplicate Detection**: Fast hash-based duplicate identification across your entire collection
+- **Visual Group Management**: View duplicates organized in logical groups with file details
+- **Selective Deletion**: Choose specific files to keep or delete from each duplicate group
+- **Bulk Operations**: Delete all duplicates except originals with a single command
+- **Space Analysis**: See potential space savings before cleanup operations
+- **Safe Deletion**: Confirmation dialogs for destructive operations
+
+### 🖥️ Terminal User Interface
+- **Modern TUI Design**: Beautiful terminal interface built with Ratatui featuring intuitive layouts
+- **Multi-Tab Navigation**: Organized tabs for Files, Images, Videos, and Metadata views
+- **Real-Time Progress Tracking**: Live progress bars and status updates for all operations
+- **Interactive Dashboard**: Comprehensive statistics and insights about your media collection
+- **Fully Keyboard-Driven**: Complete keyboard navigation with customizable shortcuts
+- **Contextual Help System**: Scrollable help overlay with all keyboard shortcuts and usage tips
+- **Visual Feedback**: Color-coded status messages, progress indicators, and focus highlighting
+
+### ⚡ Performance & Efficiency
+- **Async/Await Architecture**: Built on Tokio for blazing-fast concurrent operations
+- **Configurable Worker Threads**: Adjust parallelism for optimal performance on your hardware  
+- **Intelligent Caching**: Smart file metadata caching with automatic cleanup
+- **Memory Optimization**: Efficient handling of large file collections
+- **SSD-Optimized Operations**: Special settings and optimizations for solid-state drives
+- **Background Processing**: Non-blocking operations that keep the UI responsive
+
+### ⚙️ Configuration & Customization
+- **Comprehensive Settings**: Detailed configuration options for all aspects of organization
+- **Multiple Organization Modes**: Yearly, Monthly, Daily, By Type, or Type + Date structures
+- **Flexible File Handling**: Options for duplicates, hidden files, metadata preservation
+- **Performance Tuning**: Configurable buffer sizes, thread counts, and processing modes
+- **Cross-Platform Config**: Automatic configuration management across Linux, macOS, and Windows
+- **Live Settings Updates**: Changes take effect immediately without restart
+
+### 📊 Analytics & Insights  
+- **Collection Statistics**: Detailed breakdowns of file types, sizes, and distribution
+- **Duplicate Analysis**: Identify space waste and optimization opportunities
+- **Metadata Insights**: View EXIF data, camera information, and technical details
+- **Progress Monitoring**: Real-time feedback on scanning and organization operations
+- **Storage Usage**: Track space utilization and potential savings
 
 ## 🚀 Getting Started
 Prerequisites
