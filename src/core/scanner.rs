@@ -26,7 +26,20 @@ pub struct Scanner {
     cache: Arc<Mutex<FileCache>>,
 }
 
+impl Default for Scanner {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scanner {
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            is_scanning: Arc::new(Mutex::new(false)),
+            cache: Arc::new(Mutex::new(FileCache::new())),
+        }
+    }
     /// Creates a new Scanner instance with cache support.
     ///
     /// # Errors
@@ -43,6 +56,11 @@ impl Scanner {
             is_scanning: Arc::new(Mutex::new(false)),
             cache: Arc::new(Mutex::new(cache)),
         })
+    }
+
+    #[allow(dead_code)]
+    pub async fn cache_size(&self) -> usize {
+        self.cache.lock().await.len()
     }
 
     /// Scans a directory for media files and returns a list of `MediaFile` objects.

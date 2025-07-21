@@ -52,6 +52,6 @@ pretty_assertions = "1.4"
 name = "integration"
 path = "tests/integration_tests.rs"
 
-#[[test]]
-#name = "system"
-#path = "tests/system_tests.rs"
+[[test]]
+name = "system"
+path = "tests/system_tests.rs"
