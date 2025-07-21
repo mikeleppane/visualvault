@@ -1,13 +1,13 @@
 use crate::models::{MediaFile, MediaMetadata};
+use ahash::AHashMap;
 use chrono::{DateTime, Local};
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileCache {
-    pub entries: HashMap<PathBuf, CacheEntry>,
+    pub entries: AHashMap<PathBuf, CacheEntry>,
     pub version: u32,
 }
 
@@ -27,7 +27,7 @@ impl FileCache {
 
     pub fn new() -> Self {
         Self {
-            entries: HashMap::new(),
+            entries: AHashMap::new(),
             version: Self::CURRENT_VERSION,
         }
     }

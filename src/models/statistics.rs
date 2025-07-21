@@ -1,6 +1,6 @@
+use ahash::AHashMap;
 use chrono::Datelike;
 use chrono::{DateTime, Local};
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use crate::models::{FileType, MediaFile};
@@ -10,15 +10,15 @@ pub struct Statistics {
     pub total_files: usize,
     pub total_size: u64,
     pub duplicate_count: usize,
-    pub media_types: HashMap<String, usize>,
-    pub type_sizes: HashMap<String, u64>,
-    pub files_by_date: HashMap<String, usize>,
-    pub files_by_year: HashMap<u32, usize>,
-    pub files_by_extension: HashMap<String, usize>,
+    pub media_types: AHashMap<String, usize>,
+    pub type_sizes: AHashMap<String, u64>,
+    pub files_by_date: AHashMap<String, usize>,
+    pub files_by_year: AHashMap<u32, usize>,
+    pub files_by_extension: AHashMap<String, usize>,
     pub largest_files: Vec<(PathBuf, u64)>,
     pub most_recent_files: Vec<(PathBuf, DateTime<Local>)>,
     pub duplicate_size: u64, // Total size of duplicate files (excluding one copy of each)
-    pub file_types: HashMap<FileType, usize>,
+    pub file_types: AHashMap<FileType, usize>,
 }
 
 impl Statistics {
@@ -72,7 +72,7 @@ impl Statistics {
         self.most_recent_files = sorted_by_date.into_iter().take(10).collect();
     }
 
-    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &HashMap<String, Vec<MediaFile>>) {
+    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &AHashMap<String, Vec<MediaFile>>) {
         // Reset statistics
         self.total_files = files.len();
         self.total_size = files.iter().map(|f| f.size).sum();

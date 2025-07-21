@@ -1,3 +1,4 @@
+use ahash::AHashMap;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
@@ -5,7 +6,6 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Bar, BarChart, BarGroup, Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
 };
-use std::collections::HashMap;
 
 use crate::app::App;
 
@@ -79,12 +79,41 @@ fn draw_stats_cards(f: &mut Frame, area: Rect, app: &App) {
         ])
         .split(area);
 
+    // Calculate actual duplicate count from duplicate_groups if available
+    let duplicate_count = if let Some(ref groups) = app.duplicate_groups {
+        if groups.is_empty() {
+            stats.duplicate_count
+        } else {
+            // Count total duplicate files (all files in groups minus one per group)
+            groups.iter().map(|group| group.len().saturating_sub(1)).sum()
+        }
+    } else {
+        stats.duplicate_count
+    };
+
+    // Calculate duplicate size if we have duplicate groups
+    let duplicate_size = if let Some(ref groups) = app.duplicate_groups {
+        if groups.is_empty() {
+            0
+        } else {
+            groups
+                .iter()
+                .map(|group| {
+                    // Sum size of all duplicates (excluding the first/original)
+                    group.iter().skip(1).map(|f| f.size).sum::<u64>()
+                })
+                .sum()
+        }
+    } else {
+        0
+    };
+
     // Use the cached statistics from the app
     let cards = [
         ("Total Files", stats.total_files.to_string(), Color::Cyan),
         ("Total Size", format_bytes(stats.total_size), Color::Green),
-        ("Duplicates", stats.duplicate_count.to_string(), Color::Yellow),
-        ("Media Types", stats.media_types.len().to_string(), Color::Magenta),
+        ("Duplicates", duplicate_count.to_string(), Color::Yellow),
+        ("Wasted Space", format_bytes(duplicate_size), Color::Magenta),
     ];
 
     for (i, (title, value, color)) in cards.iter().enumerate() {
@@ -269,6 +298,7 @@ fn draw_file_type_distribution(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(bar_chart, area);
 }
 
+#[allow(clippy::too_many_lines)]
 fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
     let mut activities = Vec::new();
 
@@ -308,16 +338,26 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
         ])));
     }
 
-    // Add duplicate detection activity
-    if app.statistics.duplicate_count > 0 {
-        activities.push(ListItem::new(Line::from(vec![
-            Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
-            Span::raw(format!(
-                "Found {} duplicate files ({})",
-                app.statistics.duplicate_count,
-                format_bytes(app.statistics.duplicate_count as u64)
-            )),
-        ])));
+    // Add duplicate detection activity - Check actual duplicate groups
+    if let Some(ref duplicate_groups) = app.duplicate_groups {
+        if !duplicate_groups.is_empty() {
+            let total_duplicates: usize = duplicate_groups.iter().map(|group| group.len().saturating_sub(1)).sum();
+
+            let duplicate_size: u64 = duplicate_groups
+                .iter()
+                .map(|group| group.iter().skip(1).map(|f| f.size).sum::<u64>())
+                .sum();
+
+            activities.push(ListItem::new(Line::from(vec![
+                Span::styled("⚠ ", Style::default().fg(Color::Yellow)),
+                Span::raw(format!(
+                    "Found {} duplicate files across {} groups ({})",
+                    total_duplicates,
+                    duplicate_groups.len(),
+                    format_bytes(duplicate_size)
+                )),
+            ])));
+        }
     }
 
     // Add current operation status
@@ -524,7 +564,7 @@ fn draw_timeline(f: &mut Frame, area: Rect, app: &App) {
     let stats = &app.statistics;
 
     // Group files by year instead of just using files_by_date
-    let mut files_by_year: HashMap<String, (usize, u64)> = HashMap::new();
+    let mut files_by_year: AHashMap<String, (usize, u64)> = AHashMap::new();
 
     // Process all files to group by year
     for file in &app.cached_files {

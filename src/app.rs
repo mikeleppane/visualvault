@@ -1,9 +1,10 @@
+use ahash::AHashMap;
 use chrono::{DateTime, Local, TimeZone};
 use color_eyre::eyre::Result;
 use crossterm::event::{KeyCode, KeyEvent};
 use ratatui::widgets::ListState;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     path::{Path, PathBuf},
     sync::Arc,
 };
@@ -90,7 +91,7 @@ pub struct App {
     pub last_organize_result: Option<OrganizeResult>,
     pub should_quit: bool,
     pub duplicate_groups: Option<Vec<Vec<MediaFile>>>,
-    pub folder_stats_cache: HashMap<PathBuf, FolderStats>,
+    pub folder_stats_cache: AHashMap<PathBuf, FolderStats>,
     pub duplicate_stats: Option<DuplicateStats>,
     pub duplicate_detector: DuplicateDetector,
     pub selected_duplicate_group: usize,
@@ -168,7 +169,7 @@ impl App {
             last_organize_result: None,
             should_quit: false,
             duplicate_groups: None,
-            folder_stats_cache: HashMap::new(),
+            folder_stats_cache: AHashMap::new(),
             duplicate_stats: None,
             duplicate_detector: DuplicateDetector::new(),
             selected_duplicate_group: 0,
@@ -1042,7 +1043,7 @@ impl App {
 
         // Find duplicates if rename_duplicates is false
         let duplicates = if settings_clone.rename_duplicates {
-            HashMap::new()
+            AHashMap::new()
         } else {
             let mut files_for_hash = files.clone();
             scanner.find_duplicates(&mut files_for_hash, progress.clone()).await?

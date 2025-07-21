@@ -1,5 +1,6 @@
+use ahash::AHashMap;
 use color_eyre::eyre::Result;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -31,7 +32,7 @@ impl FileOrganizer {
     pub async fn organize_files_with_duplicates(
         &self,
         files: Vec<MediaFile>,
-        duplicates: HashMap<String, Vec<MediaFile>>,
+        duplicates: AHashMap<String, Vec<MediaFile>>,
         settings: &Settings,
         progress: Arc<RwLock<Progress>>,
     ) -> Result<OrganizeResult> {

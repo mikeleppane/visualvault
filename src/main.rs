@@ -24,6 +24,20 @@ mod ui;
 mod utils;
 use app::App;
 
+#[cfg(windows)]
+use mimalloc::MiMalloc;
+
+#[cfg(not(windows))]
+use jemallocator::Jemalloc;
+
+#[cfg(windows)]
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
+#[cfg(not(windows))]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Install error hooks

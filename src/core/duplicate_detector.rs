@@ -1,6 +1,6 @@
+use ahash::AHashMap;
 use color_eyre::Result;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader};
@@ -80,7 +80,7 @@ impl DuplicateDetector {
         info!("Starting duplicate detection for {} files", files.len());
 
         // Group files by size first (fast pre-filter)
-        let mut size_groups: HashMap<u64, Vec<&MediaFile>> = HashMap::new();
+        let mut size_groups: AHashMap<u64, Vec<&MediaFile>> = AHashMap::new();
         for file in files {
             size_groups.entry(file.size).or_default().push(file);
         }
@@ -94,7 +94,7 @@ impl DuplicateDetector {
         );
 
         // Calculate hashes for potential duplicates
-        let mut hash_groups: HashMap<String, Vec<MediaFile>> = HashMap::new();
+        let mut hash_groups: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
 
         for (size, group) in potential_duplicates {
             for file in group {
