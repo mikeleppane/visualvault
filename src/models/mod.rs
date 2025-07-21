@@ -1,3 +1,4 @@
+pub mod filters;
 mod media_file;
 mod statistics;
 

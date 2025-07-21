@@ -1,5 +1,6 @@
 use crate::config::Settings;
 use crate::core::file_cache::{CacheEntry, FileCache};
+use crate::models::filters::FilterSet;
 use crate::{
     models::{FileType, ImageMetadata, MediaFile, MediaMetadata},
     utils::Progress,
@@ -45,6 +46,7 @@ impl Scanner {
         recursive: bool,
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
+        filter_set: Option<FilterSet>,
     ) -> Result<Vec<MediaFile>> {
         info!("Scanner: Starting scan of {:?}", path);
 
@@ -106,9 +108,10 @@ impl Scanner {
 
         // Process files with cache support
         let files = if settings.parallel_processing && settings.worker_threads > 1 {
-            self.process_files_parallel(paths, progress, settings).await?
+            self.process_files_parallel(paths, progress, settings, filter_set)
+                .await?
         } else {
-            self.process_files_sequential(paths, progress).await?
+            self.process_files_sequential(paths, progress, filter_set).await?
         };
 
         // Save cache after processing
@@ -125,12 +128,18 @@ impl Scanner {
         &self,
         paths: Vec<PathBuf>,
         progress: Arc<RwLock<Progress>>,
+        filter_set: Option<FilterSet>,
     ) -> Result<Vec<MediaFile>> {
         let mut files = Vec::new();
 
         for (idx, path) in paths.iter().enumerate() {
             match self.process_file_with_cache(path).await {
                 Ok(file) => {
+                    if let Some(filters) = &filter_set {
+                        if filters.is_active && !filters.matches_file(&file) {
+                            continue; // Skip files that don't match filters
+                        }
+                    }
                     files.push(file);
 
                     let mut prog = progress.write().await;
@@ -151,6 +160,7 @@ impl Scanner {
         paths: Vec<PathBuf>,
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
+        filter_set: Option<FilterSet>,
     ) -> Result<Vec<MediaFile>> {
         use tokio::task::JoinSet;
 
@@ -171,10 +181,17 @@ impl Scanner {
                 let progress_clone = Arc::clone(&progress);
                 let progress_counter_clone = Arc::clone(&progress_counter);
                 let path_clone = path.clone();
+                let filter_set_clone = filter_set.clone();
 
                 join_set.spawn(async move {
                     match scanner_clone.process_file_with_cache(&path_clone).await {
                         Ok(file) => {
+                            if let Some(filters) = &filter_set_clone {
+                                if filters.is_active && !filters.matches_file(&file) {
+                                    return None; // Skip files that don't match filters
+                                }
+                            }
+
                             let current = progress_counter_clone.fetch_add(1, Ordering::SeqCst) + 1;
 
                             if let Ok(mut prog) = progress_clone.try_write() {
@@ -329,9 +346,12 @@ impl Scanner {
         recursive: bool,
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
+        filter_set: Option<FilterSet>,
     ) -> Result<(Vec<MediaFile>, HashMap<String, Vec<MediaFile>>)> {
         // First, scan all files
-        let mut files = self.scan_directory(path, recursive, progress.clone(), settings).await?;
+        let mut files = self
+            .scan_directory(path, recursive, progress.clone(), settings, filter_set)
+            .await?;
 
         // Then detect duplicates if needed
         let duplicates = if settings.rename_duplicates {

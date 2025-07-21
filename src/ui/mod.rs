@@ -13,6 +13,7 @@ use crate::utils::format_bytes;
 mod dashboard;
 mod duplicate_detector;
 mod file_details;
+mod filtering;
 mod progress;
 mod search;
 mod settings;
@@ -52,6 +53,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             progress::draw_progress_overlay(f, app);
         }
         AppState::DuplicateReview => duplicate_detector::draw(f, chunks[1], app),
+        AppState::Filters => filtering::draw(f, chunks[1], app),
     }
 
     // Draw status bar
@@ -59,7 +61,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Draw help overlay if needed
     if app.show_help {
-        draw_help_overlay(f);
+        draw_help_overlay(f, app);
     }
 }
 
@@ -69,7 +71,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         "╔═══════════════════════════════════════════════════════════════════╗",
         "║  🖼️  ╦  ╦╦╔═╗╦ ╦╔═╗╦    ╦  ╦╔═╗╦ ╦╦  ╔╦╗  🖼️                     ║",
         "║      ╚╗╔╝║╚═╗║ ║╠═╣║    ╚╗╔╝╠═╣║ ║║   ║                           ║",
-        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.3    ║",
+        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.4    ║",
         "╚═══════════════════════════════════════════════════════════════════╝",
     ];
 
@@ -142,6 +144,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         AppState::Search => ("🔎", "Search", Color::White),
         AppState::FileDetails(_) => ("📄", "File Details", Color::White),
         AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
+        AppState::Filters => ("🔧", "Filters", Color::Magenta),
     };
 
     // Create centered header block
@@ -308,64 +311,183 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(right, chunks[2]);
 }
 
-fn draw_help_overlay(f: &mut Frame) {
-    let area = centered_rect(80, 80, f.area());
+#[allow(clippy::too_many_lines)]
+fn draw_help_overlay(f: &mut Frame, app: &App) {
+    let area = centered_rect(90, 85, f.area());
     f.render_widget(Clear, area);
 
     let help_text = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
-            "🖼️  VisualVault Help",
+            "🖼️  VisualVault Help - Media Organizer v0.4",
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "Navigation",
+            "📊 Dashboard Navigation",
             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )]),
-        Line::from("  Tab        - Next tab"),
-        Line::from("  Shift+Tab  - Previous tab"),
-        Line::from("  ↑/↓        - Navigate items"),
-        Line::from("  PgUp/PgDn  - Navigate pages"),
+        Line::from("  Tab/Shift+Tab - Switch between tabs (Files, Images, Videos, Metadata)"),
+        Line::from("  ↑/↓           - Navigate items in current tab"),
+        Line::from("  PgUp/PgDn     - Navigate pages quickly"),
+        Line::from("  Enter         - View file details"),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "Actions",
+            "🔍 Core Operations",
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  r             - Scan source folder for media files"),
+        Line::from("  o             - Organize files to destination"),
+        Line::from("  f             - Search files by name/type"),
+        Line::from("  F             - Advanced filters (date, size, type, regex)"),
+        Line::from("  u             - Update folder statistics"),
+        Line::from("  D             - Duplicate detector and cleanup"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "🔄 Duplicate Management",
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  s             - Scan for duplicates (in duplicate view)"),
+        Line::from("  ←/→           - Switch between group list and file list"),
+        Line::from("  Space         - Select/deselect individual files"),
+        Line::from("  a             - Select all but first file in group"),
+        Line::from("  d             - Delete selected duplicate files"),
+        Line::from("  D             - Delete ALL duplicates from ALL groups"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "🔧 Advanced Filters (Press F)",
+            Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  Tab/Shift+Tab - Switch filter categories"),
+        Line::from("  a             - Add new filter to current category"),
+        Line::from("  d             - Delete selected filter"),
+        Line::from("  Space         - Toggle filter on/off"),
+        Line::from("  t             - Toggle all filters active/inactive"),
+        Line::from("  c             - Clear all filters"),
+        Line::from("  Enter         - Apply filters and return to dashboard"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "📝 Filter Examples",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::ITALIC),
+        )]),
+        Line::from("  Dates: 'today', 'last 7 days', '2024-01-01 to 2024-12-31'"),
+        Line::from("  Sizes: '>10MB', '<1GB', '10MB-100MB'"),
+        Line::from("  Regex: '.*\\.tmp$' (temp files), 'IMG_.*' (camera files)"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "🔍 Search & File Details",
+            Style::default().fg(Color::Blue).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from("  / or Enter    - Start typing to search (in search view)"),
+        Line::from("  Esc           - Clear search and return to dashboard"),
+        Line::from("  ↑/↓           - Navigate search results"),
+        Line::from("  Enter         - View file details from search"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "⚙️  Settings & Configuration",
             Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
         )]),
-        Line::from("  r          - Scan for files"),
-        Line::from("  o          - Organize files"),
-        Line::from("  f          - Search files"),
-        Line::from("  u          - Update target/destination folder stats"),
-        Line::from("  s          - Open settings"),
-        Line::from("  d          - Go to dashboard"),
+        Line::from("  s             - Open settings"),
+        Line::from("  S             - Save settings (in settings view)"),
+        Line::from("  R             - Reset to defaults (in settings view)"),
+        Line::from("  Tab           - Switch settings tabs"),
+        Line::from("  Space         - Toggle checkboxes"),
+        Line::from("  Enter         - Edit text fields"),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "General",
-            Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            "🎯 Quick Actions",
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
         )]),
-        Line::from("  ?/F1       - Toggle this help"),
-        Line::from("  q          - Quit application"),
-        Line::from("  Esc        - Cancel/Go back"),
+        Line::from("  d             - Return to dashboard from anywhere"),
+        Line::from("  ?/F1          - Toggle this help"),
+        Line::from("  q             - Quit application"),
+        Line::from("  Esc           - Cancel current action/go back"),
+        Line::from("  Ctrl+C        - Force quit"),
         Line::from(""),
         Line::from(vec![Span::styled(
-            "Press any key to close",
+            "📊 Status Indicators",
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::ITALIC),
+        )]),
+        Line::from("  Green messages  - Success/completed operations"),
+        Line::from("  Red messages    - Errors or warnings"),
+        Line::from("  Blue spinner    - Operations in progress"),
+        Line::from("  Yellow borders  - Currently active/focused elements"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "💡 Tips",
+            Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
+        )]),
+        Line::from("  • Use filters to work with specific file types or date ranges"),
+        Line::from("  • Duplicate detector shows potential space savings"),
+        Line::from("  • Settings are automatically saved when changed"),
+        Line::from("  • Search supports partial matches and file extensions"),
+        Line::from("  • Use ↑/↓ or PgUp/PgDn to scroll this help"),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Press any key (except arrows) to close this help",
             Style::default()
                 .fg(Color::Rgb(150, 150, 150))
                 .add_modifier(Modifier::ITALIC),
         )]),
     ];
 
+    // Calculate scroll position - use help_scroll from App
+    let content_height = help_text.len();
+    let visible_height = area.height.saturating_sub(2) as usize; // Account for borders
+    let max_scroll = content_height.saturating_sub(visible_height);
+    let scroll_offset = app.help_scroll.min(max_scroll);
+
+    #[allow(clippy::cast_possible_truncation)]
     let help = Paragraph::new(help_text)
         .block(
             Block::default()
-                .title(" Help ")
+                .title(format!(
+                    " VisualVault Help & Keyboard Shortcuts [{}%] ",
+                    if max_scroll == 0 {
+                        100
+                    } else {
+                        (scroll_offset * 100) / max_scroll
+                    }
+                ))
                 .title_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Cyan)),
         )
-        .style(Style::default().bg(Color::Rgb(20, 20, 30)));
+        .style(Style::default().bg(Color::Rgb(15, 15, 25)))
+        .scroll((scroll_offset as u16, 0));
 
     f.render_widget(help, area);
+
+    // Add scroll indicators
+    if max_scroll > 0 {
+        // Top scroll indicator
+        if scroll_offset > 0 {
+            let up_arrow = Paragraph::new("▲")
+                .style(Style::default().fg(Color::Yellow))
+                .alignment(Alignment::Center);
+            let up_area = Rect {
+                x: area.x + area.width - 2,
+                y: area.y + 1,
+                width: 1,
+                height: 1,
+            };
+            f.render_widget(up_arrow, up_area);
+        }
+
+        // Bottom scroll indicator
+        if scroll_offset < max_scroll {
+            let down_arrow = Paragraph::new("▼")
+                .style(Style::default().fg(Color::Yellow))
+                .alignment(Alignment::Center);
+            let down_area = Rect {
+                x: area.x + area.width - 2,
+                y: area.y + area.height - 2,
+                width: 1,
+                height: 1,
+            };
+            f.render_widget(down_arrow, down_area);
+        }
+    }
 }
 
 fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {

@@ -135,9 +135,7 @@ Contributions are welcome! Please feel free to submit a Pull Request. For major 
 
 Development Setup
 ## 📝 Roadmap
- * <input disabled="" type="checkbox"> Complete duplicate file handling UI
  * <input disabled="" type="checkbox"> Add video metadata extraction
- * <input disabled="" type="checkbox"> Support filtering
  * <input disabled="" type="checkbox"> Add export/import functionality
  * <input disabled="" type="checkbox"> Cloud storage integration
 
