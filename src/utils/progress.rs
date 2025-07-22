@@ -349,7 +349,7 @@ mod tests {
         progress.set_current(50);
         progress.set_message("Processing".to_string());
 
-        let debug_str = format!("{:?}", progress);
+        let debug_str = format!("{progress:?}");
         assert!(debug_str.contains("current: 50"));
         assert!(debug_str.contains("total: 100"));
         assert!(debug_str.contains("message: \"Processing\""));
