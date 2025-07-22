@@ -226,7 +226,6 @@ jobs:
           else
             echo "✅ **No unused dependencies found**" >> $GITHUB_STEP_SUMMARY
           fi
-        continue-on-error: true
       
       - name: Upload unused dependencies report
         uses: actions/upload-artifact@v4
