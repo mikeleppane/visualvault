@@ -149,10 +149,10 @@ impl Scanner {
 
         // Process files with cache support
         let files = if settings.parallel_processing && settings.worker_threads > 1 {
-            self.process_files_parallel(paths, progress, settings, filter_set)
+            self.process_files_parallel(&paths, progress, settings, filter_set)
                 .await?
         } else {
-            self.process_files_sequential(paths, progress, filter_set).await?
+            self.process_files_sequential(&paths, progress, filter_set).await?
         };
 
         // Save cache after processing
@@ -167,7 +167,7 @@ impl Scanner {
 
     async fn process_files_sequential(
         &self,
-        paths: Vec<PathBuf>,
+        paths: &[PathBuf],
         progress: Arc<RwLock<Progress>>,
         filter_set: Option<FilterSet>,
     ) -> Result<Vec<MediaFile>> {
@@ -198,7 +198,7 @@ impl Scanner {
 
     async fn process_files_parallel(
         &self,
-        paths: Vec<PathBuf>,
+        paths: &[PathBuf],
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
         filter_set: Option<FilterSet>,
@@ -277,13 +277,8 @@ impl Scanner {
             system_time_to_datetime(metadata.modified()).map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
         // Try cache lookup with minimal locking
-        let cache_result = {
-            let cache = self.cache.lock().await;
-            cache.get(path, size, &modified).cloned()
-        };
-
-        if let Some(entry) = cache_result {
-            // Cache hit - reconstruct MediaFile without re-reading metadata
+        let cache = self.cache.lock().await;
+        if let Some(entry) = cache.get(path, size, &modified) {
             let file_type = determine_file_type(&entry.extension);
             let created =
                 system_time_to_datetime(metadata.created()).map_or_else(|| modified, |dt| dt.with_timezone(&Local));
@@ -291,6 +286,7 @@ impl Scanner {
             tracing::trace!("Cache hit for: {}", path.display());
             return Ok(entry.to_media_file(file_type, created));
         }
+        drop(cache); // Explicitly drop the lock
 
         // Cache miss - process file
         tracing::trace!("Cache miss for: {}", path.display());

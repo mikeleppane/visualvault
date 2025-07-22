@@ -1055,29 +1055,26 @@ impl App {
         let progress = self.progress.clone();
         let scanner = self.scanner.clone();
         let settings = self.settings.read().await;
-        let settings_clone = settings.clone();
         let destination = settings
             .destination_folder
             .clone()
             .ok_or_else(|| color_eyre::eyre::eyre!("No destination folder configured"))?;
-        drop(settings);
 
-        let files = self.cached_files.clone();
+        let mut files = self.cached_files.clone();
         let files_total = files.len();
 
         // Find duplicates if rename_duplicates is false
-        let duplicates = if settings_clone.rename_duplicates {
+        let duplicates = if settings.rename_duplicates {
             AHashMap::new()
         } else {
-            let mut files_for_hash = files.clone();
-            scanner.find_duplicates(&mut files_for_hash, progress.clone()).await?
+            scanner.find_duplicates(&mut files, progress.clone()).await?
         };
 
         // Directly await the organize operation
         let organize_result = organizer
-            .organize_files_with_duplicates(files, duplicates, &settings_clone, progress)
+            .organize_files_with_duplicates(files, duplicates, &settings, progress)
             .await;
-
+        drop(settings); // Release the lock early
         match organize_result {
             Ok(result) => {
                 info!("Organization complete: {} files organized", result.files_organized);
@@ -1142,7 +1139,7 @@ impl App {
     async fn update_statistics(&mut self) -> Result<()> {
         let files = self.file_manager.read().await.get_files();
         self.statistics.update_from_files(&files);
-        self.cached_files = files; // Update cache for UI
+        self.cached_files.clone_from(&(*files)); // Update cache for UI
         Ok(())
     }
 

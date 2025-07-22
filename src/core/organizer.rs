@@ -144,12 +144,12 @@ impl FileOrganizer {
         let file_name = if settings.rename_duplicates {
             // Check if file exists in target directory
             if target_dir.join(&file.name).exists() {
-                Self::generate_unique_name(&target_dir, &file.name)?
+                &Self::generate_unique_name(&target_dir, &file.name)?
             } else {
-                file.name.clone()
+                &file.name
             }
         } else {
-            file.name.clone()
+            &file.name
         };
 
         // Apply lowercase extension if configured
@@ -157,18 +157,18 @@ impl FileOrganizer {
             let stem = Path::new(&file_name)
                 .file_stem()
                 .and_then(|s| s.to_str())
-                .unwrap_or(&file_name);
+                .unwrap_or(file_name);
             let ext = Path::new(&file_name).extension().and_then(|e| e.to_str()).unwrap_or("");
             if ext.is_empty() {
                 file_name
             } else {
-                format!("{}.{}", stem, ext.to_lowercase())
+                &format!("{}.{}", stem, ext.to_lowercase())
             }
         } else {
             file_name
         };
 
-        let target_path = target_dir.join(&final_name);
+        let target_path = target_dir.join(final_name);
 
         // Move the file
         fs::rename(&file.path, &target_path).await?;
