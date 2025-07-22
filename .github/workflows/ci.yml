@@ -106,9 +106,11 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           files: lcov.info
-          fail_ci_if_error: true
+          fail_ci_if_error: false  # Don't fail CI if upload fails
           verbose: true
+        continue-on-error: true
       
       - name: Generate HTML report
         run: cargo llvm-cov report --html
