@@ -1,4 +1,5 @@
-use crate::app::{App, FilterFocus, InputMode};
+use crate::app::state::FilterFocus;
+use crate::app::{App, InputMode};
 use crate::utils::format_bytes;
 use ratatui::{
     Frame,

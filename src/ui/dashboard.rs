@@ -7,8 +7,7 @@ use ratatui::{
     widgets::{Bar, BarChart, BarGroup, Block, Borders, Cell, List, ListItem, Paragraph, Row, Table, Tabs},
 };
 
-use crate::app::App;
-use crate::utils::format_bytes;
+use crate::{app::App, utils::format_bytes};
 
 pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     let tabs = vec!["Overview", "Files", "Types", "Timeline"];

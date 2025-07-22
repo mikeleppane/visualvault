@@ -1,4 +1,4 @@
-use crate::app::{App, DuplicateFocus};
+use crate::app::App;
 use crate::core::{DuplicateGroup, DuplicateStats};
 use crate::utils::format_bytes;
 use ratatui::{
@@ -8,6 +8,8 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Block, Borders, List, ListItem, Paragraph, Row, Table},
 };
+
+use crate::app::state::DuplicateFocus;
 
 pub fn draw(f: &mut Frame, area: Rect, app: &App) {
     // Remove the header since it's now handled by the main UI
