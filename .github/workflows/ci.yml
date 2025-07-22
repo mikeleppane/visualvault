@@ -194,6 +194,47 @@ jobs:
       - name: Run security audit
         run: cargo audit
 
+  unused-deps:
+    name: Unused Dependencies Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-unused-deps-${{ hashFiles('**/Cargo.lock') }}
+      
+      - name: Install cargo-machete
+        run: cargo install cargo-machete
+      
+      - name: Check for unused dependencies
+        run: |
+          echo "## Unused Dependencies Report" >> $GITHUB_STEP_SUMMARY
+          cargo machete --with-metadata 2>&1 | tee unused_deps_report.txt
+          
+          # Add results to step summary
+          if grep -q "Found unused dependencies" unused_deps_report.txt; then
+            echo "⚠️ **Unused dependencies found:**" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat unused_deps_report.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "✅ **No unused dependencies found**" >> $GITHUB_STEP_SUMMARY
+          fi
+        continue-on-error: true
+      
+      - name: Upload unused dependencies report
+        uses: actions/upload-artifact@v4
+        with:
+          name: unused-dependencies-report
+          path: unused_deps_report.txt
+        if: always()
+
   msrv:
     name: Minimum Supported Rust Version
     runs-on: ubuntu-latest
