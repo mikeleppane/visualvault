@@ -89,7 +89,7 @@ A modern, terminal-based media file organizer built with Rust
 
 ## 🚀 Getting Started
 Prerequisites
- * Rust 1.75 or higher
+ * Rust 1.85 or higher
  * Linux, macOS, or Windows
 
 Installation
@@ -174,6 +174,28 @@ optimize_for_ssd = false
  * Type + Date: Images/2024/03-March/image.jpg
 ##  🤝 Contributing
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+
+### Quick Start for Contributors
+
+```bash
+# Fork and clone the repository
+git clone https://github.com/yourusername/visualvault.git
+cd visualvault
+
+# Create a new branch
+git checkout -b feature/your-feature-name
+
+# Make your changes and run tests
+cargo test
+cargo clippy -- -D warnings
+cargo fmt
+
+# Commit and push
+git commit -m "feat: add amazing feature"
+git push origin feature/your-feature-name
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ### Development Setup
 
