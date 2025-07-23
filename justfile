@@ -14,7 +14,7 @@ format:
 lint:
     @echo "\nLinting with clippy..."
     cargo fmt -- --check
-    cargo clippy --all-features
+    cargo clippy --all-features --all-targets -- -D warnings
     @echo "Done linting!\n"
 
 # Fix linting issues where possible

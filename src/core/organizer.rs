@@ -846,11 +846,11 @@ mod tests {
         // Create all test files
         for (filename, file_type, _) in &test_files {
             let file_path = source_dir.join(filename);
-            create_test_file(&file_path, format!("content of {}", filename).as_bytes()).await?;
+            create_test_file(&file_path, format!("content of {filename}").as_bytes()).await?;
 
             files.push(create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
                 None,
@@ -886,14 +886,12 @@ mod tests {
             let expected_path = dest_dir.join(expected_folder).join(filename);
             assert!(
                 expected_path.exists(),
-                "File {} should exist at {:?}",
-                filename,
-                expected_path
+                "File {filename} should exist at {expected_path:?}"
             );
 
             // Verify source file was moved (not copied)
             let source_path = source_dir.join(filename);
-            assert!(!source_path.exists(), "Source file {} should have been moved", filename);
+            assert!(!source_path.exists(), "Source file {filename} should have been moved");
         }
 
         // Verify folder structure
@@ -957,7 +955,7 @@ mod tests {
 
             files.push(create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
                 None,
@@ -1016,16 +1014,19 @@ mod tests {
 
             let file = create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
-                Some(hash.to_string()),
+                Some((*hash).to_string()),
             );
 
             files.push(file.clone());
 
             // Add to duplicates map if hash already exists
-            duplicates.entry(hash.to_string()).or_insert_with(Vec::new).push(file);
+            duplicates
+                .entry((*hash).to_string())
+                .or_insert_with(Vec::new)
+                .push(file);
         }
 
         let settings = Settings {
@@ -1097,7 +1098,7 @@ mod tests {
 
             files.push(create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
                 None,
@@ -1153,7 +1154,7 @@ mod tests {
             create_test_file(&file_path, b"content").await?;
             files.push(create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
                 None,
@@ -1205,21 +1206,16 @@ mod tests {
             let result = organizer
                 .organize_files_with_duplicates(files.clone(), AHashMap::new(), &settings, progress)
                 .await?;
-
-            println!("RESULT: {:?}", result);
             // print the actual paths for debugging
 
-            assert_eq!(result.files_organized, 3, "Failed for mode: {}", mode);
-            assert!(result.success, "Failed for mode: {}", mode);
-
+            assert_eq!(result.files_organized, 3, "Failed for mode: {mode}");
+            assert!(result.success, "Failed for mode: {mode}");
             // Verify files are in expected locations
             for expected_path in expected_paths {
                 let full_path = dest_dir.join(expected_path);
                 assert!(
                     full_path.exists(),
-                    "File should exist at {:?} for mode: {}",
-                    full_path,
-                    mode
+                    "File should exist at {full_path:?} for mode: {mode}"
                 );
             }
         }
@@ -1251,7 +1247,7 @@ mod tests {
 
             files.push(create_test_media_file(
                 file_path,
-                filename.to_string(),
+                (*filename).to_string(),
                 file_type.clone(),
                 modified,
                 None,
