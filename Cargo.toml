@@ -3,6 +3,21 @@ name = "visualvault"
 version = "0.4.2"
 edition = "2024"
 rust-version = "1.85"
+authors = ["Mikko Leppänen <mleppan23@gmail.com>"]
+description = "A modern, terminal-based media file organizer built with Rust"
+license = "MIT"
+readme = "README.md"
+homepage = "https://github.com/mikeleppane/visualvault"
+repository = "https://github.com/mikeleppane/visualvault"
+keywords = [
+    "media",
+    "organizer",
+    "terminal",
+    "tui",
+    "file-management",
+    "ratatui",
+]
+categories = ["command-line-utilities", "filesystem"]
 
 [dependencies]
 tokio = { version = "1.38", features = ["full"] }

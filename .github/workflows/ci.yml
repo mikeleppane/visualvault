@@ -11,6 +11,24 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
+  typos:
+    name: Typo Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check for typos
+        uses: crate-ci/typos@master
+        with:
+          config: .typos.toml
+      
+      - name: Typo report
+        if: failure()
+        run: |
+          echo "## 📝 Typo Check Failed" >> $GITHUB_STEP_SUMMARY
+          echo "Found typos in the codebase. Please fix them before merging." >> $GITHUB_STEP_SUMMARY
+          echo "You can run 'typos' locally to find and fix typos." >> $GITHUB_STEP_SUMMARY
+
   format:
     name: Format Check
     runs-on: ubuntu-latest
