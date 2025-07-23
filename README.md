@@ -7,7 +7,6 @@ A modern, terminal-based media file organizer built with Rust
 <img alt="Rust" src="https://img.shields.io/badge/Rust-1.85-orange">
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
 
-
 ## 🎥 Introduction Videos
 
 [![Watch the video](https://img.youtube.com/vi/JdzuCGQH1vQ/maxresdefault.jpg)](https://youtu.be/JdzuCGQH1vQ)
@@ -172,6 +171,483 @@ optimize_for_ssd = false
  * Daily: 2024/03/15/image.jpg
  * By Type: Images/image.jpg
  * Type + Date: Images/2024/03-March/image.jpg
+
+
+## 🏗️ Architecture
+
+VisualVault is built with a modular, async-first architecture that prioritizes performance, maintainability, and user experience. The application follows a layered architecture with clear separation of concerns and leverages Rust's ownership model for memory safety and performance.
+
+### High-Level Architecture
+
+```mermaid
+graph TB
+    subgraph "Presentation Layer"
+        TUI[Terminal UI<br/>Ratatui Widgets]
+        DASH[Dashboard View]
+        SET[Settings View]
+        HELP[Help Overlay]
+    end
+
+    subgraph "Application Layer"
+        APP[App State<br/>Event Loop]
+        HAND[Event Handlers]
+        STAT[State Management]
+    end
+
+    subgraph "Domain Layer"
+        SCAN[File Scanner]
+        ORG[File Organizer]
+        DUP[Duplicate Detector]
+        FILT[Filter Engine]
+        CACHE[File Cache]
+    end
+
+    subgraph "Infrastructure Layer"
+        CFG[Config Manager<br/>TOML]
+        FS[File System<br/>std::fs + tokio::fs]
+        STOR[Storage Providers<br/>Google Drive]
+        UTILS[Utilities<br/>Media Types, Formatters]
+    end
+
+    TUI --> APP
+    DASH --> HAND
+    SET --> HAND
+    APP --> STAT
+    HAND --> SCAN
+    HAND --> ORG
+    HAND --> DUP
+    SCAN --> CACHE
+    ORG --> FS
+    DUP --> CACHE
+    FILT --> SCAN
+    CFG --> APP
+    STOR --> FS
+    UTILS --> SCAN
+```
+
+### Component Architecture
+
+```mermaid
+graph TB
+    subgraph "src/main.rs"
+        MAIN[Application Entry Point<br/>Tokio Runtime Setup]
+    end
+
+    subgraph "src/app/"
+        APP_MOD[app.rs - Main App Struct]
+        HANDLERS[handlers.rs - Event Handlers]
+        STATE[AppState enum]
+    end
+
+    subgraph "src/core/"
+        SCANNER[scanner.rs - File Discovery]
+        ORGANIZER[organizer.rs - File Operations]
+        DUPLICATE[duplicate.rs - Hash-based Detection]
+        FILE_CACHE[file_cache.rs - Metadata Persistence]
+    end
+
+    subgraph "src/ui/"
+        DASHBOARD[dashboard.rs - Main View]
+        SETTINGS[settings.rs - Configuration UI]
+        HELP_UI[help.rs - Help System]
+    end
+
+    subgraph "src/models/"
+        MEDIA_FILE[media_file.rs - File Representation]
+        FILE_TYPE[file_type.rs - Type System]
+        FILTERS[filters.rs - Query Objects]
+    end
+
+    subgraph "src/config/"
+        SETTINGS_CFG[settings.rs - Configuration]
+    end
+
+    subgraph "src/utils/"
+        MEDIA_TYPES[media_types.rs - Type Detection]
+        FORMAT[format.rs - Display Formatting]
+        DATETIME[datetime.rs - Time Utilities]
+    end
+
+    MAIN --> APP_MOD
+    APP_MOD --> HANDLERS
+    APP_MOD --> STATE
+    HANDLERS --> SCANNER
+    HANDLERS --> ORGANIZER
+    HANDLERS --> DUPLICATE
+    APP_MOD --> DASHBOARD
+    APP_MOD --> SETTINGS
+    SCANNER --> FILE_CACHE
+    SCANNER --> MEDIA_FILE
+    ORGANIZER --> MEDIA_FILE
+    DUPLICATE --> MEDIA_FILE
+    MEDIA_FILE --> FILE_TYPE
+    SCANNER --> FILTERS
+```
+
+### Data Flow Architecture
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant TUI
+    participant App
+    participant Handlers
+    participant Scanner
+    participant Cache
+    participant Organizer
+    participant FileSystem
+
+    User->>TUI: Keyboard Input
+    TUI->>App: KeyEvent
+    App->>Handlers: handle_key_events()
+    
+    alt Scan Operation
+        Handlers->>Scanner: scan_directory()
+        Scanner->>Cache: check_cached_metadata()
+        Cache-->>Scanner: cached entries
+        Scanner->>FileSystem: read_dir() + metadata()
+        Scanner->>Scanner: extract_metadata()
+        Scanner->>Cache: update_cache()
+        Scanner-->>Handlers: Vec<MediaFile>
+        Handlers->>App: update state
+        App->>TUI: render update
+    end
+    
+    alt Organize Operation
+        Handlers->>Organizer: organize_files()
+        Organizer->>FileSystem: create_dir_all()
+        Organizer->>FileSystem: fs::rename() / fs::copy()
+        Organizer-->>Handlers: OrganizationResult
+        Handlers->>App: update statistics
+        App->>TUI: render results
+    end
+```
+
+### State Management Pattern
+
+```mermaid
+stateDiagram-v2
+    [*] --> Loading
+    Loading --> Dashboard: Config Loaded
+    
+    Dashboard --> Settings: 's' key
+    Dashboard --> Scanning: 'r' key
+    Dashboard --> Organizing: 'o' key
+    Dashboard --> Filtering: 'f' key
+    Dashboard --> Help: '?' key
+    
+    Settings --> Dashboard: Esc / Save
+    Settings --> Editing: Enter on field
+    Editing --> Settings: Enter / Esc
+    
+    Scanning --> Dashboard: Complete / Cancel
+    Organizing --> Dashboard: Complete / Cancel
+    Filtering --> Dashboard: Apply / Clear
+    Help --> Dashboard: Any key
+    
+    Dashboard --> [*]: 'q' key
+```
+
+### Core Components Deep Dive
+
+#### 1. **Application State (src/app/app.rs)**
+
+The main `App` struct serves as the central coordinator:
+
+```rust
+pub struct App {
+    pub state: AppState,
+    pub files: Vec<MediaFile>,
+    pub settings_cache: Settings,
+    pub selected_tab: usize,
+    pub input_mode: InputMode,
+    // ... other state fields
+}
+
+pub enum AppState {
+    Dashboard,
+    Settings,
+    Help,
+    Scanning,
+    Organizing,
+}
+```
+
+Key responsibilities:
+- Maintains application state and UI state
+- Coordinates between UI and business logic
+- Manages configuration and settings
+- Handles keyboard input routing
+
+#### 2. **File Scanner (src/core/scanner.rs)**
+
+```mermaid
+graph LR
+    subgraph "Scanner Pipeline"
+        A[Directory Traversal] --> B[File Filtering]
+        B --> C[Metadata Extraction]
+        C --> D[Cache Update]
+        D --> E[Result Collection]
+    end
+    
+    subgraph "Parallel Processing"
+        F[Worker Pool]
+        G[Channel-based Communication]
+        H[Progress Tracking]
+    end
+    
+    C -.-> F
+    F -.-> G
+    G -.-> H
+```
+
+Features:
+- Async directory traversal with `walkdir`
+- Parallel metadata extraction
+- Smart caching with staleness detection
+- Progress reporting via `Arc<RwLock<Progress>>`
+- Support for different organization modes
+
+#### 3. **File Organizer (src/core/organizer.rs)**
+
+The organizer implements different strategies based on settings:
+
+```rust
+impl FileOrganizer {
+    pub async fn organize_files(&self, files: Vec<MediaFile>, settings: &Settings) -> Result<OrganizationResult> {
+        match settings.organize_by.as_str() {
+            "yearly" => self.organize_by_date(files, DateFormat::Yearly).await,
+            "monthly" => self.organize_by_date(files, DateFormat::Monthly).await,
+            "type" => self.organize_by_type(files).await,
+            _ => Err(Error::UnsupportedOrganizationMode),
+        }
+    }
+}
+```
+
+#### 4. **Duplicate Detection (src/core/duplicate.rs)**
+
+Uses hash-based detection with configurable algorithms:
+
+```mermaid
+graph TB
+    A[File Input] --> B[Hash Calculation<br/>Blake3/SHA256/MD5]
+    B --> C[Hash Map Storage]
+    C --> D[Duplicate Grouping]
+    D --> E[Size-based Validation]
+    E --> F[User Selection UI]
+```
+
+#### 5. **Caching System (src/core/file_cache.rs)**
+
+Persistent metadata cache using `serde` serialization:
+
+```rust
+#[derive(Serialize, Deserialize)]
+pub struct FileCache {
+    entries: HashMap<PathBuf, CacheEntry>,
+    last_cleanup: SystemTime,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CacheEntry {
+    metadata: MediaFileMetadata,
+    last_modified: SystemTime,
+    hash: Option<String>,
+}
+```
+
+### Performance Architecture
+
+#### Async Concurrency Model
+
+```mermaid
+graph TB
+    subgraph "Tokio Runtime"
+        RT[Multi-threaded Runtime]
+        EXEC[Task Executor]
+        IO[Async I/O Reactor]
+    end
+
+    subgraph "Application Tasks"
+        UI[UI Event Loop<br/>16ms ticks]
+        SCAN[File Scanning<br/>CPU Intensive]
+        ORG[File Organization<br/>I/O Intensive]
+        CACHE[Cache Updates<br/>Background]
+    end
+
+    subgraph "Thread Pool"
+        T1[Worker Thread 1]
+        T2[Worker Thread 2]
+        TN[Worker Thread N]
+    end
+
+    RT --> EXEC
+    EXEC --> UI
+    EXEC --> SCAN
+    EXEC --> ORG
+    EXEC --> CACHE
+    
+    SCAN -.-> T1
+    SCAN -.-> T2
+    SCAN -.-> TN
+```
+
+Key performance features:
+- **Non-blocking UI**: UI runs on separate task with 16ms refresh rate
+- **Parallel File Processing**: Configurable worker thread pool
+- **Streaming**: Large directories processed in chunks
+- **Memory Management**: `Arc<T>` for shared data, bounded channels for backpressure
+
+#### Memory Optimization Strategies
+
+```rust
+// Efficient string handling
+pub struct MediaFile {
+    pub path: PathBuf,           // Owned path
+    pub name: String,            // Cached filename
+    pub extension: String,       // Interned extension
+    pub file_type: FileType,     // Enum (1 byte)
+    pub size: u64,              // 8 bytes
+    pub modified: DateTime<Local>, // 12 bytes
+    pub hash: Option<String>,    // Lazy-computed
+}
+```
+
+### Error Handling Architecture
+
+Comprehensive error handling using `thiserror`:
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum VisualVaultError {
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    
+    #[error("Configuration error: {message}")]
+    Config { message: String },
+    
+    #[error("Scanner error: {0}")]
+    Scanner(#[from] ScannerError),
+    
+    #[error("Organizer error: {0}")]
+    Organizer(#[from] OrganizerError),
+    
+    #[error("Cache error: {0}")]
+    Cache(#[from] CacheError),
+}
+```
+
+### Configuration Management
+
+TOML-based configuration with automatic migration:
+
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub source_folder: Option<PathBuf>,
+    pub destination_folder: Option<PathBuf>,
+    pub organize_by: String,
+    pub parallel_processing: bool,
+    pub worker_threads: usize,
+    // ... other settings
+}
+```
+
+Platform-specific config locations:
+- Linux: `~/.config/visualvault/config.toml`
+- macOS: `~/Library/Application Support/visualvault/config.toml`
+- Windows: `%APPDATA%\visualvault\config.toml`
+
+### UI Architecture (Ratatui-based)
+
+```mermaid
+graph TB
+    subgraph "Ratatui Framework"
+        TERM[Terminal Backend]
+        FRAME[Frame Rendering]
+        LAYOUT[Layout Engine]
+    end
+
+    subgraph "UI Components"
+        DASH_UI[Dashboard Widgets]
+        SET_UI[Settings Widgets]
+        HELP_UI[Help Widgets]
+        PROG[Progress Bars]
+    end
+
+    subgraph "Event System"
+        KEYS[Keyboard Events]
+        RESIZE[Terminal Resize]
+        TICK[Timer Events]
+    end
+
+    TERM --> FRAME
+    FRAME --> LAYOUT
+    LAYOUT --> DASH_UI
+    LAYOUT --> SET_UI
+    LAYOUT --> HELP_UI
+    LAYOUT --> PROG
+    
+    KEYS --> APP
+    RESIZE --> APP
+    TICK --> APP
+```
+
+### Testing Architecture
+
+```rust
+// Integration test structure
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    
+    async fn setup_test_env() -> (TempDir, Scanner, Settings) {
+        // Test fixture setup
+    }
+    
+    #[tokio::test]
+    async fn test_complete_workflow() -> Result<()> {
+        // End-to-end test
+    }
+}
+```
+
+Test categories:
+- **Unit Tests**: Individual component testing
+- **Integration Tests**: Complete workflow testing
+- **Property Tests**: Fuzzing with `proptest`
+- **Benchmark Tests**: Performance regression testing
+
+### Security Considerations
+
+- **Path Sanitization**: All paths are canonicalized to prevent traversal attacks
+- **Permission Validation**: File operations check permissions before execution
+- **Safe File Operations**: Atomic operations with rollback on failure
+- **Input Validation**: All user input is validated and sanitized
+- **No Unsafe Code**: Pure safe Rust implementation
+
+### Extension Points and Plugin Architecture
+
+The architecture supports extensions through:
+
+1. **Custom Organization Strategies**: Implement `OrganizationStrategy` trait
+2. **Storage Providers**: Implement `StorageProvider` trait for cloud backends
+3. **Filter Types**: Add new filter implementations
+4. **File Type Support**: Extend the `FileType` enum and detection logic
+
+```rust
+pub trait OrganizationStrategy: Send + Sync {
+    async fn organize(&self, files: Vec<MediaFile>, settings: &Settings) -> Result<OrganizationResult>;
+    fn name(&self) -> &'static str;
+    fn description(&self) -> &'static str;
+}
+```
+
+This architecture provides a solid foundation for the terminal-based media organizer while maintaining performance, safety, and extensibility.
+
+
 ##  🤝 Contributing
 Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
@@ -314,6 +790,13 @@ cargo +nightly bench scanner
  * <input disabled="" type="checkbox"> Add video metadata extraction
  * <input disabled="" type="checkbox"> Add export/import functionality
  * <input disabled="" type="checkbox"> Cloud storage integration
+
+## 🤝 Community
+
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
+
+We have a [Code of Conduct](CODE_OF_CONDUCT.md) that all contributors and participants are expected to follow.
+
 
 ## 📄 License
 This project is licensed under the MIT License - see the LICENSE file for details.
