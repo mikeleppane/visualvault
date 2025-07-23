@@ -36,6 +36,8 @@ serde_json = "1.0"
 tokio = { version = "1", features = ["full", "test-util"] }
 color-eyre = "0.6"
 chrono = "0.4"
+criterion = { version = "0.6", features = ["html_reports"] }
+proptest = "1.7"
 
 [[test]]
 name = "integration"
@@ -44,3 +46,15 @@ path = "tests/integration_tests.rs"
 [[test]]
 name = "system"
 path = "tests/system_tests.rs"
+
+[[bench]]
+name = "scanner_benchmark"
+harness = false
+
+[[bench]]
+name = "organizer_benchmark"
+harness = false
+
+[[bench]]
+name = "duplicate_benchmark"
+harness = false

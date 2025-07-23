@@ -1,0 +1,116 @@
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::float_cmp)] // For comparing floats in tests
+#![allow(clippy::panic)]
+
+use ahash::AHashMap;
+use chrono::Local;
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use std::sync::Arc;
+use std::{hint::black_box, path::PathBuf};
+use tempfile::TempDir;
+use tokio::runtime::Runtime;
+use tokio::sync::RwLock;
+use visualvault::utils::Progress;
+use visualvault::{
+    config::settings::Settings,
+    core::FileOrganizer,
+    models::{FileType, MediaFile},
+};
+
+fn create_test_media_files(count: usize) -> Vec<MediaFile> {
+    (0..count)
+        .map(|i| MediaFile {
+            path: PathBuf::from(format!("/tmp/test_{i:04}.jpg")),
+            name: format!("test_{i:04}.jpg"),
+            extension: "jpg".to_string(),
+            file_type: FileType::Image,
+            size: 1024 * 1024, // 1MB
+            modified: Local::now(),
+            created: Local::now(),
+            metadata: None,
+            hash: None,
+        })
+        .collect()
+}
+
+fn benchmark_organize_by_type(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+
+    let mut group = c.benchmark_group("organize_by_type");
+    group.sample_size(10);
+
+    for file_count in &[100, 500, 1000] {
+        group.bench_with_input(BenchmarkId::from_parameter(file_count), file_count, |b, &file_count| {
+            b.iter_batched(
+                || {
+                    let temp_dir = TempDir::new().unwrap();
+                    let files = create_test_media_files(file_count);
+                    let settings = Settings {
+                        destination_folder: Some(temp_dir.path().to_path_buf()),
+                        organize_by: "type".to_string(),
+                        ..Default::default()
+                    };
+                    (temp_dir, files, settings)
+                },
+                |(_, files, settings)| {
+                    rt.block_on(async {
+                        let organizer = FileOrganizer::new();
+                        let progress = Arc::new(RwLock::new(Progress::default()));
+
+                        organizer
+                            .organize_files_with_duplicates(black_box(files), AHashMap::new(), &settings, progress)
+                            .await
+                            .unwrap()
+                    })
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+fn benchmark_organize_modes(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+
+    let mut group = c.benchmark_group("organize_modes");
+    group.sample_size(10);
+
+    let modes = vec!["yearly", "monthly", "type"];
+    let files = create_test_media_files(1000);
+
+    for mode in modes {
+        group.bench_with_input(BenchmarkId::from_parameter(mode), &mode, |b, &mode| {
+            b.iter_batched(
+                || {
+                    let temp_dir = TempDir::new().unwrap();
+                    let settings = Settings {
+                        destination_folder: Some(temp_dir.path().to_path_buf()),
+                        organize_by: mode.to_string(),
+                        ..Default::default()
+                    };
+                    (temp_dir, files.clone(), settings)
+                },
+                |(_, files, settings)| {
+                    rt.block_on(async {
+                        let organizer = FileOrganizer::new();
+                        let progress = Arc::new(RwLock::new(Progress::default()));
+
+                        organizer
+                            .organize_files_with_duplicates(black_box(files), AHashMap::new(), &settings, progress)
+                            .await
+                            .unwrap()
+                    })
+                },
+                criterion::BatchSize::SmallInput,
+            );
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches, benchmark_organize_by_type, benchmark_organize_modes);
+criterion_main!(benches);

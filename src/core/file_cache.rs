@@ -22,16 +22,34 @@ pub struct CacheEntry {
     pub metadata: Option<MediaMetadata>,
 }
 
-impl FileCache {
-    const CURRENT_VERSION: u32 = 1;
-
-    pub fn new() -> Self {
+impl Default for FileCache {
+    fn default() -> Self {
         Self {
             entries: AHashMap::new(),
             version: Self::CURRENT_VERSION,
         }
     }
+}
 
+impl FileCache {
+    const CURRENT_VERSION: u32 = 1;
+
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Loads the file cache from disk.
+    ///
+    /// If the cache file doesn't exist, returns a new empty cache.
+    /// If the cache version is incompatible, returns a new empty cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The cache directory cannot be determined
+    /// - File I/O operations fail when reading the cache file
+    /// - The cache file contains invalid JSON that cannot be deserialized
     pub async fn load() -> Result<Self> {
         let cache_path = Self::get_cache_path()?;
 
@@ -51,6 +69,14 @@ impl FileCache {
         }
     }
 
+    /// Saves the file cache to disk.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The cache directory cannot be determined
+    /// - File I/O operations fail when creating the cache directory or writing the cache file
+    /// - The cache data cannot be serialized to JSON
     pub async fn save(&self) -> Result<()> {
         let cache_dir = dirs::cache_dir()
             .ok_or_else(|| color_eyre::eyre::eyre!("Failed to get cache directory"))?
@@ -65,6 +91,7 @@ impl FileCache {
         Ok(())
     }
 
+    #[must_use]
     pub fn get(&self, path: &Path, size: u64, modified: &DateTime<Local>) -> Option<&CacheEntry> {
         self.entries
             .get(path)
@@ -104,8 +131,15 @@ impl FileCache {
         Ok(cache_dir.join("file_cache.json"))
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.entries.len()
+    }
+
+    #[allow(dead_code)]
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
     }
 }
 
