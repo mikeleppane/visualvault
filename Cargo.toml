@@ -76,3 +76,8 @@ harness = false
 
 [lib]
 bench = false
+
+[[bin]]
+name = "visualvault"
+path = "src/main.rs"
+bench = false
