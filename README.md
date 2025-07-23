@@ -95,7 +95,7 @@ Installation
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/visualvault.git
+git clone https://github.com/mikeleppane/visualvault.git
 cd visualvault
 
 # Build the project
