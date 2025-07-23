@@ -1,0 +1,16 @@
+# .config/nextest.toml
+[profile.default]
+# Print out output for failing tests as soon as they fail, and also at the end
+# of the run (for easy scrollability).
+failure-output = "immediate-final"
+# Do not cancel the test run on the first failure.
+fail-fast = false
+
+[profile.ci]
+# Nextest started supporting JUnit about a year ago; it's a better format than libtest's.
+# In CI, use JUnit instead of the default libtest output.
+reporter = "junit"
+# In CI, do not retry failing tests. Retrying failing tests can lead to CI passing with flaky tests.
+retries = 0
+# In CI, fail fast to get feedback on failure as soon as possible.
+fail-fast = true

@@ -1,0 +1,8 @@
+/target
+# Coverage reports
+lcov.info
+*.profraw
+*.profdata
+target/llvm-cov/
+coverage/
+

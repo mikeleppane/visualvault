@@ -1,0 +1,168 @@
+name: Benchmark
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  benchmark:
+    name: Performance Benchmark
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+      pull-requests: write
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-cargo-index-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo build
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: ${{ runner.os }}-cargo-build-bench-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gnuplot python3
+
+      - name: Run benchmarks
+        run: |
+          # Run benchmarks and capture output
+          cargo bench --all-features 2>&1 | tee benchmark-output.txt
+
+      - name: Convert benchmark output
+        run: |
+          python3 scripts/convert_benchmark_output.py benchmark-output.txt output.txt --verbose
+
+      - name: Store benchmark result
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          name: VisualVault Benchmark
+          tool: 'cargo'
+          output-file-path: output.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          alert-threshold: '150%'
+          comment-on-alert: true
+          alert-comment-cc-users: '@mikeleppane'
+          summary-always: true
+          
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: |
+            target/criterion/
+            benchmark-output.txt
+            output.txt
+
+  benchmark-compare:
+    name: Benchmark Comparison
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-criterion
+        run: cargo install cargo-criterion
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: benchmark
+
+      - name: Checkout base branch
+        run: |
+          git fetch origin ${{ github.base_ref }}
+          git checkout origin/${{ github.base_ref }}
+
+      - name: Run base benchmarks
+        run: |
+          timeout 300 cargo criterion --message-format json > base-benchmarks.json || echo "Base benchmark timeout"
+
+      - name: Checkout PR branch
+        run: |
+          git checkout ${{ github.head_ref }}
+
+      - name: Run PR benchmarks
+        run: |
+          timeout 300 cargo criterion --message-format json > pr-benchmarks.json || echo "PR benchmark timeout"
+
+      - name: Install critcmp
+        run: cargo install critcmp
+
+      - name: Compare benchmarks
+        run: |
+          if [ -f base-benchmarks.json ] && [ -f pr-benchmarks.json ]; then
+            critcmp base-benchmarks.json pr-benchmarks.json > comparison.txt || echo "No significant changes" > comparison.txt
+          else
+            echo "Benchmark comparison skipped - missing benchmark data" > comparison.txt
+          fi
+
+      - name: Comment PR with comparison
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            let comparison = 'Benchmark comparison not available';
+            
+            try {
+              comparison = fs.readFileSync('comparison.txt', 'utf8');
+            } catch (error) {
+              console.log('Could not read comparison file:', error.message);
+            }
+            
+            const body = `## 📊 Benchmark Comparison
+            
+            \`\`\`
+            ${comparison}
+            \`\`\`
+            
+            <details>
+            <summary>Benchmark Details</summary>
+            
+            - **Base**: \`${{ github.base_ref }}\`
+            - **Head**: \`${{ github.head_ref }}\`
+            - **Runner**: \`${{ runner.os }}\`
+            - **Timeout**: 300 seconds per benchmark run
+            
+            </details>`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
