@@ -73,3 +73,6 @@ harness = false
 [[bench]]
 name = "duplicate_benchmark"
 harness = false
+
+[lib]
+bench = false
