@@ -93,6 +93,18 @@ impl Scanner {
             error!("Scanner: Path does not exist: {:?}", path);
             return Err(color_eyre::eyre::eyre!("Path does not exist"));
         }
+
+        let scan_all_types = matches!(settings.organize_by.as_str(), "type");
+
+        info!(
+            "Scanner: Scanning {} files in {:?} (recursive: {}, all types: {}, organize by: {})",
+            if recursive { "all" } else { "top-level" },
+            path,
+            recursive,
+            scan_all_types,
+            settings.organize_by
+        );
+
         // Load cache at the start
         let mut cache = self.cache.lock().await;
 
@@ -117,7 +129,13 @@ impl Scanner {
                         true // Include this file
                     }
                 })
-                .filter(|e| Self::is_media_file(e.path()))
+                .filter(|e| {
+                    if scan_all_types {
+                        true
+                    } else {
+                        Self::is_media_file(e.path())
+                    }
+                })
                 .map(|e| e.path().to_path_buf())
                 .collect()
         } else {
@@ -133,11 +151,11 @@ impl Scanner {
                         true // Include this file
                     }
                 })
-                .filter(|p| Self::is_media_file(p))
+                .filter(|p| if scan_all_types { true } else { Self::is_media_file(p) })
                 .collect()
         };
 
-        info!("Scanner: Found {} media files in {:?}", paths.len(), path);
+        info!("Scanner: Found {} files in {:?}", paths.len(), path);
 
         // Update progress total
         {
@@ -154,6 +172,19 @@ impl Scanner {
         } else {
             self.process_files_sequential(&paths, progress, filter_set).await?
         };
+
+        // Log file type distribution if organizing by type
+        if scan_all_types && !files.is_empty() {
+            let mut type_counts = std::collections::HashMap::new();
+            for file in &files {
+                *type_counts.entry(file.file_type.clone()).or_insert(0) += 1;
+            }
+
+            info!("Scanner: File type distribution:");
+            for (file_type, count) in type_counts {
+                info!("  {}: {} files", file_type, count);
+            }
+        }
 
         // Save cache after processing
         if (self.cache.lock().await.save().await).is_ok() {
@@ -1006,6 +1037,269 @@ mod tests {
         assert_eq!(prog.current, 5);
         assert!(!prog.message.is_empty());
         drop(prog);
+        Ok(())
+    }
+
+    // Add this test case to the existing tests module
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn test_scan_all_file_types_with_type_organization() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let root = temp_dir.path();
+
+        // Create various file types to test comprehensive scanning
+        // Images
+        create_test_file(&root.join("photo.jpg"), b"JPG_DATA").await?;
+        create_test_file(&root.join("screenshot.png"), b"PNG_DATA").await?;
+        create_test_file(&root.join("raw_photo.cr2"), b"CR2_DATA").await?;
+
+        // Videos
+        create_test_file(&root.join("movie.mp4"), b"MP4_DATA").await?;
+        create_test_file(&root.join("clip.avi"), b"AVI_DATA").await?;
+
+        // Documents
+        create_test_file(&root.join("document.pdf"), b"PDF_DATA").await?;
+        create_test_file(&root.join("spreadsheet.xlsx"), b"XLSX_DATA").await?;
+        create_test_file(&root.join("presentation.pptx"), b"PPTX_DATA").await?;
+        create_test_file(&root.join("text.txt"), b"TXT_DATA").await?;
+        create_test_file(&root.join("markdown.md"), b"MD_DATA").await?;
+
+        // Audio files
+        create_test_file(&root.join("song.mp3"), b"MP3_DATA").await?;
+        create_test_file(&root.join("audio.flac"), b"FLAC_DATA").await?;
+
+        // Archives
+        create_test_file(&root.join("archive.zip"), b"ZIP_DATA").await?;
+        create_test_file(&root.join("compressed.7z"), b"7Z_DATA").await?;
+
+        // Other files
+        create_test_file(&root.join("data.xml"), b"XML_DATA").await?;
+        create_test_file(&root.join("config.json"), b"JSON_DATA").await?;
+
+        // Files that should NOT be scanned (no extension or unsupported)
+        create_test_file(&root.join("no_extension"), b"NO_EXT").await?;
+        create_test_file(&root.join("executable.exe"), b"EXE_DATA").await?;
+
+        let scanner = Scanner::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        // Test with organize by type mode - should scan ALL supported file types
+        let settings_type = Settings {
+            organize_by: "type".to_string(),
+            ..Default::default()
+        };
+
+        let files_type = scanner
+            .scan_directory(root, false, progress.clone(), &settings_type, None)
+            .await?;
+
+        // Should find all supported files (16 files)
+        assert_eq!(
+            files_type.len(),
+            18,
+            "Should scan all supported file types when organize_by = 'type'"
+        );
+
+        // Verify file type distribution
+        let mut type_counts = std::collections::HashMap::new();
+        for file in &files_type {
+            *type_counts.entry(file.file_type.clone()).or_insert(0) += 1;
+        }
+
+        // Check that we have files of each type
+        assert_eq!(
+            type_counts.get(&FileType::Image).copied().unwrap_or(0),
+            3,
+            "Should find 3 image files"
+        );
+        assert_eq!(
+            type_counts.get(&FileType::Video).copied().unwrap_or(0),
+            2,
+            "Should find 2 video files"
+        );
+        assert_eq!(
+            type_counts.get(&FileType::Document).copied().unwrap_or(0),
+            7,
+            "Should find 7 document files"
+        );
+        assert_eq!(
+            type_counts.get(&FileType::Other).copied().unwrap_or(0),
+            6,
+            "Should find 6 other files"
+        );
+
+        // Test with default mode (not organize by type) - should only scan media files
+        let settings_default = Settings {
+            organize_by: "monthly".to_string(),
+            ..Default::default()
+        };
+
+        let files_default = scanner
+            .scan_directory(root, false, progress.clone(), &settings_default, None)
+            .await?;
+
+        // Should only find image and video files (5 files)
+        assert_eq!(
+            files_default.len(),
+            5,
+            "Should only scan media files when organize_by != 'type'"
+        );
+
+        // Verify only media files are found
+        for file in &files_default {
+            assert!(
+                matches!(file.file_type, FileType::Image | FileType::Video),
+                "Should only find image and video files in default mode"
+            );
+        }
+
+        // Test recursive scanning with type organization
+        create_test_file(&root.join("subdir/nested.pdf"), b"PDF_DATA").await?;
+        create_test_file(&root.join("subdir/image.jpg"), b"JPG_DATA").await?;
+        create_test_file(&root.join("subdir/deep/audio.mp3"), b"MP3_DATA").await?;
+
+        let files_recursive = scanner
+            .scan_directory(root, true, progress.clone(), &settings_type, None)
+            .await?;
+
+        // Should find original 18 + 3 new files in subdirectories
+        assert_eq!(files_recursive.len(), 21, "Should scan all files recursively");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_file_type_edge_cases() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let root = temp_dir.path();
+
+        // Test case sensitivity
+        create_test_file(&root.join("UPPERCASE.JPG"), b"JPG_DATA").await?;
+        create_test_file(&root.join("MiXeD.PdF"), b"PDF_DATA").await?;
+        create_test_file(&root.join("lowercase.mp3"), b"MP3_DATA").await?;
+
+        // Test files with multiple dots
+        create_test_file(&root.join("file.name.with.dots.jpg"), b"JPG_DATA").await?;
+        create_test_file(&root.join("backup.tar.gz"), b"TAR_GZ_DATA").await?;
+
+        // Test files with special characters
+        create_test_file(&root.join("file with spaces.pdf"), b"PDF_DATA").await?;
+        create_test_file(&root.join("file-with-dashes.mp4"), b"MP4_DATA").await?;
+        create_test_file(&root.join("file_with_underscores.zip"), b"ZIP_DATA").await?;
+
+        let scanner = Scanner::with_cache().await?;
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let settings = Settings {
+            organize_by: "type".to_string(),
+            ..Default::default()
+        };
+
+        let files = scanner.scan_directory(root, false, progress, &settings, None).await?;
+
+        // All files should be scanned successfully
+        assert_eq!(files.len(), 8, "Should handle all edge cases");
+
+        // Verify case insensitive extension handling
+        let jpg_files: Vec<_> = files
+            .iter()
+            .filter(|f| {
+                matches!(f.file_type, FileType::Image) && (f.extension == "jpg" || f.extension == "JPG".to_lowercase())
+            })
+            .collect();
+        assert_eq!(jpg_files.len(), 2, "Should handle uppercase and dotted JPG files");
+
+        // Verify special character handling
+        let special_char_files: Vec<_> = files
+            .iter()
+            .filter(|f| f.name.contains(' ') || f.name.contains('-') || f.name.contains('_'))
+            .collect();
+        assert_eq!(
+            special_char_files.len(),
+            3,
+            "Should handle files with special characters"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_scan_performance_with_many_file_types() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let root = temp_dir.path();
+
+        // Create many files of different types to test performance
+        let file_types = vec![
+            ("jpg", "IMAGE", FileType::Image),
+            ("pdf", "PDF", FileType::Document),
+            ("mp3", "AUDIO", FileType::Other),
+            ("zip", "ARCHIVE", FileType::Other),
+            ("mp4", "VIDEO", FileType::Video),
+        ];
+
+        // Create 20 files of each type (100 files total)
+        for (ext, data, _) in &file_types {
+            for i in 0..20 {
+                create_test_file(&root.join(format!("file_{i:03}.{ext}")), data.as_bytes()).await?;
+            }
+        }
+
+        let scanner = Scanner::with_cache().await?;
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        // Test with type organization
+        let settings_type = Settings {
+            organize_by: "type".to_string(),
+            parallel_processing: true,
+            worker_threads: 4,
+            ..Default::default()
+        };
+
+        let start = std::time::Instant::now();
+        let files = scanner
+            .scan_directory(root, false, progress.clone(), &settings_type, None)
+            .await?;
+        let duration = start.elapsed();
+
+        assert_eq!(files.len(), 100, "Should scan all 100 files");
+
+        // Verify distribution
+        let mut type_counts = std::collections::HashMap::new();
+        for file in &files {
+            *type_counts.entry(file.file_type.clone()).or_insert(0) += 1;
+        }
+
+        for (_, _, expected_type) in &file_types {
+            match expected_type {
+                FileType::Image => assert_eq!(type_counts.get(&FileType::Image).copied().unwrap_or(0), 20),
+                FileType::Video => assert_eq!(type_counts.get(&FileType::Video).copied().unwrap_or(0), 20),
+                FileType::Document => assert_eq!(type_counts.get(&FileType::Document).copied().unwrap_or(0), 20),
+                FileType::Other => assert_eq!(type_counts.get(&FileType::Other).copied().unwrap_or(0), 40),
+            }
+        }
+
+        println!("Scanned 100 files of mixed types in {duration:?}");
+
+        // Compare with media-only scanning
+        let settings_media = Settings {
+            organize_by: "monthly".to_string(),
+            parallel_processing: true,
+            worker_threads: 4,
+            ..Default::default()
+        };
+
+        let start_media = std::time::Instant::now();
+        let files_media = scanner
+            .scan_directory(root, false, progress, &settings_media, None)
+            .await?;
+        let duration_media = start_media.elapsed();
+
+        // Should only find image and video files (40 files)
+        assert_eq!(files_media.len(), 40, "Should only scan media files");
+
+        println!("Scanned 40 media files in {duration_media:?}");
+
         Ok(())
     }
 }

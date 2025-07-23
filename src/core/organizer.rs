@@ -179,7 +179,7 @@ impl FileOrganizer {
     fn determine_target_directory(file: &MediaFile, destination: &Path, settings: &Settings) -> Result<PathBuf> {
         let mut path = destination.to_path_buf();
 
-        if settings.separate_videos && file.file_type == FileType::Video {
+        if settings.separate_videos && file.file_type == FileType::Video && settings.organize_by != "type" {
             path.push("Videos");
         }
 
@@ -192,19 +192,7 @@ impl FileOrganizer {
                 path.push(file.modified.format("%m-%B").to_string());
             }
             Ok(OrganizationMode::ByType) => {
-                path.push(Self::get_type_folder(file, settings));
-            }
-            Ok(OrganizationMode::Daily) => {
-                path.push(file.modified.format("%Y").to_string());
-                path.push(file.modified.format("%m-%B").to_string());
-                path.push(file.modified.format("%d-%A").to_string());
-            }
-            Ok(OrganizationMode::TypeAndDate) => {
-                // Combine type and date
-                path.push(Self::get_type_folder(file, settings));
-                path.push(file.modified.format("%Y").to_string());
-                path.push(file.modified.format("%m-%B").to_string());
-                path.push(file.modified.format("%d-%A").to_string());
+                path.push(Self::get_type_folder(file));
             }
             Err(e) => {
                 error!("Invalid organization mode: {}", e);
@@ -214,18 +202,12 @@ impl FileOrganizer {
         Ok(path)
     }
 
-    fn get_type_folder(file: &MediaFile, settings: &Settings) -> String {
+    fn get_type_folder(file: &MediaFile) -> String {
         match file.file_type {
             FileType::Image => "Images".to_string(),
-            FileType::Video => {
-                if settings.separate_videos {
-                    "Videos".to_string()
-                } else {
-                    "Media".to_string()
-                }
-            }
+            FileType::Video => "Videos".to_string(),
             FileType::Document => "Documents".to_string(),
-            FileType::Other => "Other".to_string(),
+            FileType::Other => "Others".to_string(),
         }
     }
 
@@ -273,6 +255,7 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+
     use super::*;
     use chrono::{DateTime, Local, TimeZone};
     use tempfile::TempDir;
@@ -378,11 +361,11 @@ mod tests {
     }
 
     #[test]
-    fn test_determine_target_directory_daily() -> Result<()> {
+    fn test_determine_target_directory_by_type() -> Result<()> {
         let temp_dir = TempDir::new()?;
         let destination = temp_dir.path();
         let settings = Settings {
-            organize_by: "daily".to_string(),
+            organize_by: "type".to_string(),
             separate_videos: false,
             ..create_test_settings(destination.to_path_buf())
         };
@@ -396,7 +379,7 @@ mod tests {
         );
 
         let target_dir = FileOrganizer::determine_target_directory(&file, destination, &settings)?;
-        assert_eq!(target_dir, destination.join("2024").join("03-March").join("15-Friday"));
+        assert_eq!(target_dir, destination.join("Images"));
 
         Ok(())
     }
@@ -453,11 +436,6 @@ mod tests {
 
     #[test]
     fn test_get_type_folder() {
-        let settings = Settings {
-            separate_videos: true,
-            ..Default::default()
-        };
-
         // Test image
         let image_file = create_test_media_file(
             PathBuf::from("image.jpg"),
@@ -466,7 +444,7 @@ mod tests {
             Local::now(),
             None,
         );
-        assert_eq!(FileOrganizer::get_type_folder(&image_file, &settings), "Images");
+        assert_eq!(FileOrganizer::get_type_folder(&image_file), "Images");
 
         // Test video with separate_videos = true
         let video_file = create_test_media_file(
@@ -476,17 +454,10 @@ mod tests {
             Local::now(),
             None,
         );
-        assert_eq!(FileOrganizer::get_type_folder(&video_file, &settings), "Videos");
+        assert_eq!(FileOrganizer::get_type_folder(&video_file), "Videos");
 
         // Test video with separate_videos = false
-        let settings_no_separate = Settings {
-            separate_videos: false,
-            ..Default::default()
-        };
-        assert_eq!(
-            FileOrganizer::get_type_folder(&video_file, &settings_no_separate),
-            "Media"
-        );
+        assert_eq!(FileOrganizer::get_type_folder(&video_file), "Videos");
 
         // Test document
         let doc_file = create_test_media_file(
@@ -496,7 +467,7 @@ mod tests {
             Local::now(),
             None,
         );
-        assert_eq!(FileOrganizer::get_type_folder(&doc_file, &settings), "Documents");
+        assert_eq!(FileOrganizer::get_type_folder(&doc_file), "Documents");
 
         // Test other
         let other_file = create_test_media_file(
@@ -506,7 +477,7 @@ mod tests {
             Local::now(),
             None,
         );
-        assert_eq!(FileOrganizer::get_type_folder(&other_file, &settings), "Other");
+        assert_eq!(FileOrganizer::get_type_folder(&other_file), "Others");
     }
 
     #[tokio::test]
@@ -827,5 +798,530 @@ mod tests {
         drop(prog);
 
         Ok(())
+    }
+
+    // Add these test cases to the existing tests module
+
+    #[tokio::test]
+    async fn test_organize_by_type_all_file_types() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create test files for all supported types
+        let test_files = vec![
+            // Images
+            ("photo1.jpg", FileType::Image, "Images"),
+            ("photo2.png", FileType::Image, "Images"),
+            ("photo3.gif", FileType::Image, "Images"),
+            ("raw_photo.cr2", FileType::Image, "Images"),
+            // Videos
+            ("video1.mp4", FileType::Video, "Videos"),
+            ("video2.avi", FileType::Video, "Videos"),
+            ("video3.mkv", FileType::Video, "Videos"),
+            // Documents
+            ("document1.pdf", FileType::Document, "Documents"),
+            ("document2.docx", FileType::Document, "Documents"),
+            ("spreadsheet.xlsx", FileType::Document, "Documents"),
+            ("presentation.pptx", FileType::Document, "Documents"),
+            ("text.txt", FileType::Document, "Documents"),
+            // Audio
+            ("song1.mp3", FileType::Other, "Others"),
+            ("song2.flac", FileType::Other, "Others"),
+            ("podcast.m4a", FileType::Other, "Others"),
+            // Archives
+            ("backup.zip", FileType::Other, "Others"),
+            ("compressed.7z", FileType::Other, "Others"),
+            ("archive.tar.gz", FileType::Other, "Others"),
+            // Other
+            ("data.dat", FileType::Other, "Others"),
+            ("config.cfg", FileType::Other, "Others"),
+        ];
+
+        let mut files = Vec::new();
+        let modified = Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap();
+
+        // Create all test files
+        for (filename, file_type, _) in &test_files {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, format!("content of {}", filename).as_bytes()).await?;
+
+            files.push(create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        // Configure settings for type-based organization
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "type".to_string(),
+            rename_duplicates: false,
+            separate_videos: true,
+            lowercase_extensions: false,
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .await?;
+
+        // Verify all files were organized
+        assert_eq!(result.files_organized, test_files.len());
+        assert_eq!(result.files_total, test_files.len());
+        assert_eq!(result.skipped_duplicates, 0);
+        assert!(result.success);
+        assert!(result.errors.is_empty());
+
+        // Verify each file is in the correct type folder
+        for (filename, _, expected_folder) in &test_files {
+            let expected_path = dest_dir.join(expected_folder).join(filename);
+            assert!(
+                expected_path.exists(),
+                "File {} should exist at {:?}",
+                filename,
+                expected_path
+            );
+
+            // Verify source file was moved (not copied)
+            let source_path = source_dir.join(filename);
+            assert!(!source_path.exists(), "Source file {} should have been moved", filename);
+        }
+
+        // Verify folder structure
+        /* assert!(dest_dir.join("Images").exists());
+        assert!(dest_dir.join("Videos").exists());
+        assert!(dest_dir.join("Documents").exists());
+        assert!(dest_dir.join("Others").exists());
+        assert!(dest_dir.join("Others").exists());
+        assert!(dest_dir.join("Others").exists()); */
+
+        // Count files in each folder
+        let mut images_dir = fs::read_dir(dest_dir.join("Images")).await?;
+        let mut images_count = 0;
+        while images_dir.next_entry().await?.is_some() {
+            images_count += 1;
+        }
+
+        let mut videos_dir = fs::read_dir(dest_dir.join("Videos")).await?;
+        let mut videos_count = 0;
+        while videos_dir.next_entry().await?.is_some() {
+            videos_count += 1;
+        }
+
+        let mut documents_dir = fs::read_dir(dest_dir.join("Documents")).await?;
+        let mut documents_count = 0;
+        while documents_dir.next_entry().await?.is_some() {
+            documents_count += 1;
+        }
+
+        let mut other_dir = fs::read_dir(dest_dir.join("Others")).await?;
+        let mut other_count = 0;
+        while other_dir.next_entry().await?.is_some() {
+            other_count += 1;
+        }
+
+        assert_eq!(images_count, 4);
+        assert_eq!(videos_count, 3);
+        assert_eq!(documents_count, 5);
+        assert_eq!(other_count, 8);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_by_type_with_separate_videos_disabled() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create test video files
+        let video_files = vec![("video1.mp4", FileType::Video), ("video2.avi", FileType::Video)];
+
+        let mut files = Vec::new();
+        let modified = Local::now();
+
+        for (filename, file_type) in &video_files {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, b"video content").await?;
+
+            files.push(create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        // Configure settings with separate_videos = false
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "type".to_string(),
+            separate_videos: false,
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 2);
+        assert!(result.success);
+
+        // Videos should be in "Media" folder when separate_videos is false
+        assert!(dest_dir.join("Videos").join("video1.mp4").exists());
+        assert!(dest_dir.join("Videos").join("video2.avi").exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_by_type_with_duplicates() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create duplicate files of different types
+        let files_data = vec![
+            ("image1.jpg", FileType::Image, "duplicate_image", "hash_img"),
+            ("image2.jpg", FileType::Image, "duplicate_image", "hash_img"),
+            ("doc1.pdf", FileType::Document, "duplicate_doc", "hash_doc"),
+            ("doc2.pdf", FileType::Document, "duplicate_doc", "hash_doc"),
+            ("unique.mp3", FileType::Other, "unique_audio", "hash_unique"),
+        ];
+
+        let mut files = Vec::new();
+        let mut duplicates = AHashMap::new();
+        let modified = Local::now();
+
+        for (filename, file_type, content, hash) in &files_data {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, content.as_bytes()).await?;
+
+            let file = create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                Some(hash.to_string()),
+            );
+
+            files.push(file.clone());
+
+            // Add to duplicates map if hash already exists
+            duplicates.entry(hash.to_string()).or_insert_with(Vec::new).push(file);
+        }
+
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "type".to_string(),
+            rename_duplicates: false, // Skip duplicates
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, duplicates, &settings, progress)
+            .await?;
+
+        // Should organize 3 files (one from each duplicate group + unique)
+        assert_eq!(result.files_organized, 3);
+        assert_eq!(result.files_total, 5);
+        assert_eq!(result.skipped_duplicates, 2);
+        assert!(result.success);
+
+        // Verify files are in correct type folders
+        assert!(dest_dir.join("Images").exists());
+        assert!(dest_dir.join("Documents").exists());
+        assert!(dest_dir.join("Others").join("unique.mp3").exists());
+
+        // Count files to ensure only one from each duplicate group
+        let mut images_dir = fs::read_dir(dest_dir.join("Images")).await?;
+        let mut images_count = 0;
+        while images_dir.next_entry().await?.is_some() {
+            images_count += 1;
+        }
+
+        let mut documents_dir = fs::read_dir(dest_dir.join("Documents")).await?;
+        let mut documents_count = 0;
+        while documents_dir.next_entry().await?.is_some() {
+            documents_count += 1;
+        }
+
+        assert_eq!(images_count, 1); // Only one image from duplicate group
+        assert_eq!(documents_count, 1); // Only one document from duplicate group
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_by_type_with_lowercase_extensions() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create files with uppercase extensions
+        let files_data = vec![
+            ("IMAGE.JPG", FileType::Image),
+            ("DOCUMENT.PDF", FileType::Document),
+            ("AUDIO.MP3", FileType::Other),
+            ("MiXeD.ZiP", FileType::Other),
+        ];
+
+        let mut files = Vec::new();
+        let modified = Local::now();
+
+        for (filename, file_type) in &files_data {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, b"content").await?;
+
+            files.push(create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "type".to_string(),
+            lowercase_extensions: true,
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 4);
+        assert!(result.success);
+
+        // Verify files have lowercase extensions
+        assert!(dest_dir.join("Images").join("IMAGE.jpg").exists());
+        assert!(dest_dir.join("Documents").join("DOCUMENT.pdf").exists());
+        assert!(dest_dir.join("Others").join("AUDIO.mp3").exists());
+        assert!(dest_dir.join("Others").join("MiXeD.zip").exists());
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_mixed_modes() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create test files
+        let test_data = vec![
+            ("photo.jpg", FileType::Image),
+            ("video.mp4", FileType::Video),
+            ("document.pdf", FileType::Document),
+        ];
+
+        let mut files = Vec::new();
+        let modified = Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap();
+
+        for (filename, file_type) in &test_data {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, b"content").await?;
+            files.push(create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        // Test different organization modes
+        let modes = vec![
+            (
+                "type",
+                vec!["Images/photo.jpg", "Videos/video.mp4", "Documents/document.pdf"],
+            ),
+            ("yearly", vec!["2024/photo.jpg", "2024/video.mp4", "2024/document.pdf"]),
+            (
+                "monthly",
+                vec![
+                    "2024/03-March/photo.jpg",
+                    "2024/03-March/video.mp4",
+                    "2024/03-March/document.pdf",
+                ],
+            ),
+        ];
+
+        for (mode, expected_paths) in modes {
+            // Reset destination directory
+            if dest_dir.exists() {
+                fs::remove_dir_all(&dest_dir).await?;
+            }
+            fs::create_dir_all(&dest_dir).await?;
+
+            // Recreate source files
+            for (filename, _) in &test_data {
+                let file_path = source_dir.join(filename);
+                if !file_path.exists() {
+                    create_test_file(&file_path, b"content").await?;
+                }
+            }
+
+            let settings = Settings {
+                destination_folder: Some(dest_dir.clone()),
+                organize_by: mode.to_string(),
+                separate_videos: false,
+                ..Default::default()
+            };
+
+            let organizer = FileOrganizer::new();
+            let progress = Arc::new(RwLock::new(Progress::default()));
+
+            let result = organizer
+                .organize_files_with_duplicates(files.clone(), AHashMap::new(), &settings, progress)
+                .await?;
+
+            println!("RESULT: {:?}", result);
+            // print the actual paths for debugging
+
+            assert_eq!(result.files_organized, 3, "Failed for mode: {}", mode);
+            assert!(result.success, "Failed for mode: {}", mode);
+
+            // Verify files are in expected locations
+            for expected_path in expected_paths {
+                let full_path = dest_dir.join(expected_path);
+                assert!(
+                    full_path.exists(),
+                    "File should exist at {:?} for mode: {}",
+                    full_path,
+                    mode
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_by_type_empty_extension() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create files without extensions
+        let files_data = vec![
+            ("README", FileType::Other),
+            ("Makefile", FileType::Other),
+            ("LICENSE", FileType::Other),
+        ];
+
+        let mut files = Vec::new();
+        let modified = Local::now();
+
+        for (filename, file_type) in &files_data {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, b"content").await?;
+
+            files.push(create_test_media_file(
+                file_path,
+                filename.to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "type".to_string(),
+            lowercase_extensions: true, // Should handle files without extensions
+            ..Default::default()
+        };
+
+        let organizer = FileOrganizer::new();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        let result = organizer
+            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 3);
+        assert!(result.success);
+
+        // All files without extensions should go to "Other" folder
+        assert!(dest_dir.join("Others").exists());
+        assert!(dest_dir.join("Others").join("README").exists());
+        assert!(dest_dir.join("Others").join("Makefile").exists());
+        assert!(dest_dir.join("Others").join("LICENSE").exists());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_type_folder_all_types() {
+        // Test all file types
+        let test_cases = vec![
+            (FileType::Image, "Images"),
+            (FileType::Video, "Videos"),
+            (FileType::Document, "Documents"),
+            (FileType::Other, "Others"),
+            (FileType::Other, "Others"),
+            (FileType::Other, "Others"),
+        ];
+
+        for (file_type, expected_folder) in test_cases {
+            let file = create_test_media_file(
+                PathBuf::from("test"),
+                "test".to_string(),
+                file_type.clone(),
+                Local::now(),
+                None,
+            );
+
+            assert_eq!(
+                FileOrganizer::get_type_folder(&file),
+                expected_folder,
+                "Failed for file type: {:?}",
+                file_type.clone()
+            );
+        }
+
+        // Test video with separate_videos = false
+        let video_file = create_test_media_file(
+            PathBuf::from("video.mp4"),
+            "video.mp4".to_string(),
+            FileType::Video,
+            Local::now(),
+            None,
+        );
+
+        assert_eq!(FileOrganizer::get_type_folder(&video_file), "Videos");
     }
 }

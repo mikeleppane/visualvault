@@ -224,22 +224,20 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
         .direction(Direction::Vertical)
         .margin(2)
         .constraints([
-            Constraint::Length(6),  // Organization mode
+            Constraint::Length(8),  // Organization mode
             Constraint::Length(10), // File type options
             Constraint::Min(0),     // Preview
         ])
         .split(area);
 
     // Organization mode
-    let org_modes = vec![
+    let org_modes = [
         ("yearly", "Yearly", "Organize by year (2024/filename.jpg)"),
         ("monthly", "Monthly", "Organize by month (2024/03-March/filename.jpg)"),
-        ("daily", "Daily", "Organize by day (2024/03/15/filename.jpg)"),
-        ("type", "By Type", "Organize by file type (Images/filename.jpg)"),
         (
-            "type-date",
-            "Type + Date",
-            "Combine type and date (Images/2024/filename.jpg)",
+            "type",
+            "By Type",
+            "Organize by file type (Images/filename.jpg, Videos/filename.mp4, Documents/filename.pdf, Others/filename.ext)",
         ),
     ];
 
@@ -302,18 +300,13 @@ fn draw_organization_settings(f: &mut Frame, area: Rect, app: &App) {
             "Lowercase extensions",
             "Convert file extensions to lowercase",
         ),
-        (
-            settings.create_thumbnails,
-            "Create thumbnails",
-            "Generate preview thumbnails for images",
-        ),
     ];
 
     let type_items: Vec<ListItem> = type_options
         .iter()
         .enumerate()
         .map(|(idx, (enabled, name, desc))| {
-            let is_selected = app.selected_setting == idx + 5;
+            let is_selected = app.selected_setting == idx + 3;
             let checkbox = if *enabled { "☑" } else { "☐" };
             let style = if is_selected {
                 Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)

@@ -29,8 +29,6 @@ pub struct Settings {
     pub lowercase_extensions: bool,
     #[serde(default = "default_preserve_metadata")]
     pub preserve_metadata: bool,
-    #[serde(default)]
-    pub create_thumbnails: bool,
     #[serde(default = "default_worker_threads")]
     pub worker_threads: usize,
     #[serde(default = "default_buffer_size")]
@@ -88,7 +86,6 @@ impl Default for Settings {
             rename_duplicates: default_rename_duplicates(),
             lowercase_extensions: default_lowercase_extensions(),
             preserve_metadata: default_preserve_metadata(),
-            create_thumbnails: false,
             worker_threads: default_worker_threads(),
             buffer_size: default_buffer_size(),
             enable_cache: default_enable_cache(),
@@ -157,9 +154,7 @@ impl Settings {
 pub enum OrganizationMode {
     Yearly,
     Monthly,
-    Daily,
     ByType,
-    TypeAndDate,
 }
 
 impl FromStr for OrganizationMode {
@@ -169,9 +164,7 @@ impl FromStr for OrganizationMode {
         match s.to_lowercase().as_str() {
             "yearly" => Ok(Self::Yearly),
             "monthly" => Ok(Self::Monthly),
-            "daily" => Ok(Self::Daily),
             "type" => Ok(Self::ByType),
-            "type-date" => Ok(Self::TypeAndDate),
             _ => Err(format!("Unknown organization mode: {s}")),
         }
     }
@@ -188,9 +181,7 @@ impl fmt::Display for OrganizationMode {
         match self {
             Self::Yearly => write!(f, "yearly"),
             Self::Monthly => write!(f, "monthly"),
-            Self::Daily => write!(f, "daily"),
             Self::ByType => write!(f, "type"),
-            Self::TypeAndDate => write!(f, "type-date"),
         }
     }
 }
@@ -218,7 +209,6 @@ mod tests {
         assert!(settings.rename_duplicates);
         assert!(settings.lowercase_extensions);
         assert!(settings.preserve_metadata);
-        assert!(!settings.create_thumbnails);
         assert_eq!(settings.worker_threads, num_cpus::get());
         assert_eq!(settings.buffer_size, 8 * 1024 * 1024);
         assert!(settings.enable_cache);
@@ -235,22 +225,13 @@ mod tests {
             OrganizationMode::from_str("monthly").unwrap(),
             OrganizationMode::Monthly
         );
-        assert_eq!(OrganizationMode::from_str("daily").unwrap(), OrganizationMode::Daily);
         assert_eq!(OrganizationMode::from_str("type").unwrap(), OrganizationMode::ByType);
-        assert_eq!(
-            OrganizationMode::from_str("type-date").unwrap(),
-            OrganizationMode::TypeAndDate
-        );
 
         // Case insensitive
         assert_eq!(OrganizationMode::from_str("YEARLY").unwrap(), OrganizationMode::Yearly);
         assert_eq!(
             OrganizationMode::from_str("Monthly").unwrap(),
             OrganizationMode::Monthly
-        );
-        assert_eq!(
-            OrganizationMode::from_str("Type-Date").unwrap(),
-            OrganizationMode::TypeAndDate
         );
 
         // Invalid cases
@@ -263,23 +244,12 @@ mod tests {
     fn test_organization_mode_display() {
         assert_eq!(OrganizationMode::Yearly.to_string(), "yearly");
         assert_eq!(OrganizationMode::Monthly.to_string(), "monthly");
-        assert_eq!(OrganizationMode::Daily.to_string(), "daily");
         assert_eq!(OrganizationMode::ByType.to_string(), "type");
-        assert_eq!(OrganizationMode::TypeAndDate.to_string(), "type-date");
     }
 
     #[test]
     fn test_organization_mode_default() {
         assert_eq!(OrganizationMode::default(), OrganizationMode::Monthly);
-    }
-
-    #[test]
-    fn test_organization_mode_serialization() {
-        // Test that serialization and deserialization work correctly
-        let mode = OrganizationMode::TypeAndDate;
-        let serialized = serde_json::to_string(&mode).unwrap();
-        let deserialized: OrganizationMode = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(mode, deserialized);
     }
 
     #[tokio::test]
@@ -351,7 +321,6 @@ mod tests {
             rename_duplicates: false,
             lowercase_extensions: false,
             preserve_metadata: false,
-            create_thumbnails: true,
             worker_threads: 8,
             buffer_size: 4 * 1024 * 1024,
             enable_cache: false,
@@ -378,7 +347,6 @@ mod tests {
         assert_eq!(settings.rename_duplicates, deserialized.rename_duplicates);
         assert_eq!(settings.lowercase_extensions, deserialized.lowercase_extensions);
         assert_eq!(settings.preserve_metadata, deserialized.preserve_metadata);
-        assert_eq!(settings.create_thumbnails, deserialized.create_thumbnails);
         assert_eq!(settings.worker_threads, deserialized.worker_threads);
         assert_eq!(settings.buffer_size, deserialized.buffer_size);
         assert_eq!(settings.enable_cache, deserialized.enable_cache);
@@ -465,9 +433,7 @@ mod tests {
         let modes = [
             OrganizationMode::Yearly,
             OrganizationMode::Monthly,
-            OrganizationMode::Daily,
             OrganizationMode::ByType,
-            OrganizationMode::TypeAndDate,
         ];
 
         for (i, mode1) in modes.iter().enumerate() {

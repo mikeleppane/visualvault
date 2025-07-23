@@ -17,7 +17,7 @@ impl fmt::Display for FileType {
             FileType::Image => write!(f, "Image"),
             FileType::Video => write!(f, "Video"),
             FileType::Document => write!(f, "Document"),
-            FileType::Other => write!(f, "Other"),
+            FileType::Other => write!(f, "Others"),
         }
     }
 }
@@ -93,7 +93,7 @@ mod tests {
         assert_eq!(FileType::Image.to_string(), "Image");
         assert_eq!(FileType::Video.to_string(), "Video");
         assert_eq!(FileType::Document.to_string(), "Document");
-        assert_eq!(FileType::Other.to_string(), "Other");
+        assert_eq!(FileType::Other.to_string(), "Others");
     }
 
     #[test]

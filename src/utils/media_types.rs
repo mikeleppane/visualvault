@@ -1,23 +1,28 @@
-use regex::RegexSet;
-
 use crate::models::FileType;
+use regex::Regex;
 
 #[allow(clippy::expect_used)]
-pub static MEDIA_EXTENSIONS: std::sync::LazyLock<RegexSet> = std::sync::LazyLock::new(|| {
-    RegexSet::new([
-        r"(?i)\.(jpg|jpeg|png|gif|bmp|webp|tiff|svg|ico|heic)$",
-        r"(?i)\.(mp4|avi|mkv|mov|wmv|flv|webm|m4v|mpg|mpeg)$",
-        r"(?i)\.(mp3|wav|flac|aac|ogg|wma|m4a|opus)$",
-    ])
-    .expect("Failed to compile media extensions regex patterns")
+// Original media extensions for backward compatibility
+pub static MEDIA_EXTENSIONS: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+    Regex::new(r"(?i)\.(jpg|jpeg|png|gif|bmp|webp|svg|ico|tiff?|raw|cr2|nef|arw|dng|orf|rw2|pef|sr2|mp4|avi|mkv|mov|wmv|flv|webm|m4v|mpg|mpeg|3gp|3g2|mts|m2ts|vob|ogv|heic|heif)$").expect("Failed to compile MEDIA_EXTENSIONS regex")
 });
 
 #[must_use]
 pub fn determine_file_type(extension: &str) -> FileType {
-    match extension {
-        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "tiff" | "raw" | "heic" | "heif" => FileType::Image,
-        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" => FileType::Video,
-        "pdf" | "doc" | "docx" | "txt" | "odt" | "rtf" => FileType::Document,
+    match extension.to_lowercase().as_str() {
+        // Images
+        "jpg" | "jpeg" | "png" | "gif" | "bmp" | "webp" | "svg" | "ico" | "tiff" | "tif" | "raw" | "cr2" | "nef"
+        | "arw" | "dng" | "orf" | "rw2" | "pef" | "sr2" | "heic" | "heif" => FileType::Image,
+
+        // Videos
+        "mp4" | "avi" | "mkv" | "mov" | "wmv" | "flv" | "webm" | "m4v" | "mpg" | "mpeg" | "3gp" | "3g2" | "mts"
+        | "m2ts" | "vob" | "ogv" => FileType::Video,
+
+        // Documents
+        "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx" | "txt" | "odt" | "ods" | "odp" | "rtf" | "tex"
+        | "md" | "csv" | "html" | "htm" | "xml" | "json" => FileType::Document,
+
+        // Everything else
         _ => FileType::Other,
     }
 }
@@ -75,8 +80,7 @@ mod tests {
         // Test extensions that should be classified as Other
         let other_extensions = vec![
             "exe", "zip", "rar", "7z", "tar", "gz", "iso", "dmg", "pkg", "deb", "rpm", "msi", "app", "js", "py", "rs",
-            "go", "java", "cpp", "c", "html", "css", "xml", "json", "yaml", "toml", "mp3", "wav", "flac", "aac", "ogg",
-            "wma", // Audio files (not in our media types)
+            "go", "java", "cpp", "c", "css", "wma", // Audio files (not in our media types)
             "",    // Empty string
             "unknown", "xyz", "abc", "123",
         ];
@@ -94,15 +98,21 @@ mod tests {
     fn test_determine_file_type_case_sensitivity() {
         // The function appears to be case-sensitive based on the implementation
         // Testing uppercase versions which should be treated as Other
-        assert_eq!(determine_file_type("JPG"), FileType::Other);
-        assert_eq!(determine_file_type("PNG"), FileType::Other);
-        assert_eq!(determine_file_type("MP4"), FileType::Other);
-        assert_eq!(determine_file_type("PDF"), FileType::Other);
+        assert_eq!(determine_file_type("JPG"), FileType::Image);
+        assert_eq!(determine_file_type("PNG"), FileType::Image);
+        assert_eq!(determine_file_type("MP4"), FileType::Video);
+        assert_eq!(determine_file_type("PDF"), FileType::Document);
+        assert_eq!(determine_file_type("DOC"), FileType::Document);
+        assert_eq!(determine_file_type("TXT"), FileType::Document);
+        assert_eq!(determine_file_type("EXE"), FileType::Other);
 
         // Mixed case
-        assert_eq!(determine_file_type("Jpg"), FileType::Other);
-        assert_eq!(determine_file_type("Mp4"), FileType::Other);
-        assert_eq!(determine_file_type("Pdf"), FileType::Other);
+        assert_eq!(determine_file_type("Jpg"), FileType::Image);
+        assert_eq!(determine_file_type("Mp4"), FileType::Video);
+        assert_eq!(determine_file_type("Pdf"), FileType::Document);
+        assert_eq!(determine_file_type("Doc"), FileType::Document);
+        assert_eq!(determine_file_type("Txt"), FileType::Document);
+        assert_eq!(determine_file_type("ExE"), FileType::Other);
     }
 
     #[test]
@@ -149,8 +159,8 @@ mod tests {
             ("animation.gif", true),
             ("video.mp4", true),
             ("MOVIE.AVI", true),
-            ("song.mp3", true),
-            ("audio.wav", true),
+            ("song.mp3", false),
+            ("audio.wav", false),
             ("document.pdf", false), // PDF not in MEDIA_EXTENSIONS
             ("file.txt", false),
             ("archive.zip", false),
@@ -172,7 +182,9 @@ mod tests {
         // Ensure all extensions in determine_file_type for Image and Video
         // are covered by MEDIA_EXTENSIONS regex (except for audio which seems intentional)
 
-        let image_extensions = vec!["jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "heic"];
+        let image_extensions = vec![
+            "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "heic", "raw", "heif",
+        ];
         let video_extensions = vec!["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg"];
 
         for ext in image_extensions {
@@ -188,17 +200,6 @@ mod tests {
             assert!(
                 MEDIA_EXTENSIONS.is_match(&filename),
                 "Video extension '{ext}' should be in MEDIA_EXTENSIONS"
-            );
-        }
-
-        // Note: 'raw' and 'heif' in determine_file_type are not in MEDIA_EXTENSIONS regex
-        // This might be intentional or an oversight
-        let missing_in_regex = vec!["raw", "heif"];
-        for ext in missing_in_regex {
-            let filename = format!("test.{ext}");
-            assert!(
-                !MEDIA_EXTENSIONS.is_match(&filename),
-                "Extension '{ext}' is in determine_file_type but not in MEDIA_EXTENSIONS"
             );
         }
     }

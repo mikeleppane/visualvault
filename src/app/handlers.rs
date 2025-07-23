@@ -208,7 +208,7 @@ impl App {
             KeyCode::Down => {
                 let max_setting = match self.selected_tab {
                     0 => 3,
-                    1 => 9,
+                    1 => 7,
                     2 => 5,
                     _ => 0,
                 };
@@ -271,21 +271,18 @@ impl App {
         match (self.selected_tab, self.selected_setting) {
             (0, 2) => self.settings_cache.recurse_subfolders = !self.settings_cache.recurse_subfolders,
             (0, 3) => self.settings_cache.verbose_output = !self.settings_cache.verbose_output,
-            (1, s) if s < 5 => {
+            (1, s) if s <= 2 => {
                 self.settings_cache.organize_by = match s {
                     1 => "monthly",
-                    2 => "daily",
-                    3 => "type",
-                    4 => "type-date",
-                    _ => "yearly",
+                    2 => "type",
+                    _ => "yearly", // fallback
                 }
                 .to_string();
             }
-            (1, 5) => self.settings_cache.separate_videos = !self.settings_cache.separate_videos,
-            (1, 6) => self.settings_cache.keep_original_structure = !self.settings_cache.keep_original_structure,
-            (1, 7) => self.settings_cache.rename_duplicates = !self.settings_cache.rename_duplicates,
-            (1, 8) => self.settings_cache.lowercase_extensions = !self.settings_cache.lowercase_extensions,
-            (1, 9) => self.settings_cache.create_thumbnails = !self.settings_cache.create_thumbnails,
+            (1, 3) => self.settings_cache.separate_videos = !self.settings_cache.separate_videos,
+            (1, 4) => self.settings_cache.keep_original_structure = !self.settings_cache.keep_original_structure,
+            (1, 5) => self.settings_cache.rename_duplicates = !self.settings_cache.rename_duplicates,
+            (1, 6) => self.settings_cache.lowercase_extensions = !self.settings_cache.lowercase_extensions,
             (2, 2) => self.settings_cache.enable_cache = !self.settings_cache.enable_cache,
             (2, 3) => self.settings_cache.parallel_processing = !self.settings_cache.parallel_processing,
             (2, 4) => self.settings_cache.skip_hidden_files = !self.settings_cache.skip_hidden_files,
