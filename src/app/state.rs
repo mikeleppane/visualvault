@@ -129,6 +129,9 @@ pub struct App {
     pub filter_focus: FilterFocus,
     pub selected_filter_index: usize,
     pub filter_input: String,
+
+    // Undo state
+    pub last_undo_result: Option<String>,
 }
 
 impl App {
@@ -148,7 +151,9 @@ impl App {
         let settings = Arc::new(RwLock::new(settings));
         let file_manager = Arc::new(RwLock::new(FileManager::new()));
         let scanner = Arc::new(Scanner::with_cache().await?);
-        let organizer = Arc::new(FileOrganizer::new());
+        let config_dir =
+            dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        let organizer = Arc::new(FileOrganizer::new(config_dir).await?);
         let statistics = Statistics::new();
         let progress = Arc::new(RwLock::new(Progress::new()));
 
@@ -193,6 +198,7 @@ impl App {
             filter_focus: FilterFocus::DateRange,
             selected_filter_index: 0,
             filter_input: String::new(),
+            last_undo_result: None,
         })
     }
 

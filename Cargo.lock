@@ -2426,6 +2426,7 @@ checksum = "3cf4199d1e5d15ddd86a694e4d0dffa9c323ce759fea589f00fef9d81cc1931d"
 dependencies = [
  "getrandom 0.3.3",
  "js-sys",
+ "serde",
  "wasm-bindgen",
 ]
 
@@ -2460,7 +2461,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "visualvault"
-version = "0.4.2"
+version = "0.6.0"
 dependencies = [
  "ahash",
  "chrono",
@@ -2481,10 +2482,12 @@ dependencies = [
  "serde_json",
  "sha2",
  "tempfile",
+ "thiserror 2.0.12",
  "tokio",
  "toml 0.9.2",
  "tracing",
  "tracing-subscriber",
+ "uuid",
  "walkdir",
 ]
 

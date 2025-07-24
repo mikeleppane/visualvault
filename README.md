@@ -59,6 +59,15 @@ A modern, terminal-based media file organizer built with Rust
 - **Space Analysis**: See potential space savings before cleanup operations
 - **Safe Deletion**: Confirmation dialogs for destructive operations
 
+### ↩️ Undo/Redo System
+
+- **Comprehensive Operation Tracking**: All file operations are automatically recorded for undo capability
+- **Multi-Level Undo**: Undo multiple operations in sequence with full operation history
+- **Redo Support**: Re-apply undone operations with complete state restoration
+- **Batch Operation Handling**: Undo entire organization runs as single operations
+- **Persistent History**: Undo history survives application restarts
+- **Global Shortcuts**: `Ctrl+Z` for undo and `Ctrl+R` for redo work from any screen
+
 ### 🖥️ Terminal User Interface
 
 - **Modern TUI Design**: Beautiful terminal interface built with Ratatui featuring intuitive layouts

@@ -1,5 +1,5 @@
 use color_eyre::eyre::Result;
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{app::EditingField, config::Settings, models::FileType};
 
@@ -19,6 +19,16 @@ impl App {
                 self.handle_help_keys(key);
                 Ok(())
             };
+        }
+
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('z'), KeyModifiers::CONTROL) => {
+                return self.handle_undo().await;
+            }
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                return self.handle_redo().await;
+            }
+            _ => {}
         }
 
         match key.code {
@@ -207,9 +217,8 @@ impl App {
             }
             KeyCode::Down => {
                 let max_setting = match self.selected_tab {
-                    0 => 3,
+                    0 | 2 => 5,
                     1 => 7,
-                    2 => 5,
                     _ => 0,
                 };
                 if self.selected_setting < max_setting {
@@ -271,6 +280,7 @@ impl App {
         match (self.selected_tab, self.selected_setting) {
             (0, 2) => self.settings_cache.recurse_subfolders = !self.settings_cache.recurse_subfolders,
             (0, 3) => self.settings_cache.verbose_output = !self.settings_cache.verbose_output,
+            (0, 4) => self.settings_cache.undo_enabled = !self.settings_cache.undo_enabled,
             (1, s) if s <= 2 => {
                 self.settings_cache.organize_by = match s {
                     1 => "monthly",
@@ -440,4 +450,49 @@ impl App {
         }
         Ok(())
     }
+
+    /// Handles the undo operation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the undo operation fails
+    pub async fn handle_undo(&mut self) -> Result<()> {
+        if let Some(message) = self.organizer.undo_manager().undo().await? {
+            self.last_undo_result = Some(format!("✓ {message}"));
+            self.success_message = Some(format!("Undo successful: {message}"));
+            self.success_message = Some(format!("✓ Undone: {message}"));
+        } else {
+            self.success_message = Some("Nothing to undo".to_string());
+            self.error_message = Some("Nothing to undo".to_string());
+        }
+        Ok(())
+    }
+
+    /// Handles the redo operation
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the redo operation fails
+    pub async fn handle_redo(&mut self) -> Result<()> {
+        if let Some(message) = self.organizer.undo_manager().redo().await? {
+            self.last_undo_result = Some(format!("↻ {message}"));
+            self.success_message = Some(format!("Redo successful: {message}"));
+            self.success_message = Some(format!("↻ Redone: {message}"));
+        } else {
+            self.success_message = Some("Nothing to redo".to_string());
+            self.error_message = Some("Nothing to redo".to_string());
+        }
+        Ok(())
+    }
+
+    /* /// Updates the undo history UI
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if fetching history fails
+    pub async fn update_undo_history(&mut self) -> Result<()> {
+        let operations = self.organizer.undo_manager().get_history().await;
+        self.undo_history_ui.update_operations(operations);
+        Ok(())
+    } */
 }

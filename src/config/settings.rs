@@ -41,6 +41,8 @@ pub struct Settings {
     pub skip_hidden_files: bool,
     #[serde(default)]
     pub optimize_for_ssd: bool,
+    #[serde(default = "default_undo_enabled")]
+    pub undo_enabled: bool,
 }
 
 // Default value functions for serde
@@ -72,6 +74,10 @@ fn default_parallel_processing() -> bool {
     true
 }
 
+fn default_undo_enabled() -> bool {
+    true
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -92,6 +98,7 @@ impl Default for Settings {
             parallel_processing: default_parallel_processing(),
             skip_hidden_files: false,
             optimize_for_ssd: false,
+            undo_enabled: default_undo_enabled(),
         }
     }
 }
@@ -327,6 +334,7 @@ mod tests {
             parallel_processing: false,
             skip_hidden_files: true,
             optimize_for_ssd: true,
+            undo_enabled: true,
         };
 
         // Serialize to TOML
