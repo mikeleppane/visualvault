@@ -1,6 +1,7 @@
 # Contributing to VisualVault
 
-First off, thank you for considering contributing to VisualVault! It's people like you that make VisualVault such a great tool. 🎉
+First off, thank you for considering contributing to VisualVault! It's people like you that make VisualVault
+such a great tool. 🎉
 
 ## Table of Contents
 
@@ -22,7 +23,8 @@ First off, thank you for considering contributing to VisualVault! It's people li
 
 ## Code of Conduct
 
-This project and everyone participating in it is governed by our Code of Conduct. By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
+This project and everyone participating in it is governed by our Code of Conduct.
+By participating, you are expected to uphold this code. Please report unacceptable behavior to the project maintainers.
 
 ## Getting Started
 
@@ -39,7 +41,8 @@ This project and everyone participating in it is governed by our Code of Conduct
 
 ### Reporting Bugs
 
-Before creating bug reports, please check existing issues as you might find out that you don't need to create one. When you are creating a bug report, please include as many details as possible:
+Before creating bug reports, please check existing issues as you might find out that you don't need to create one.
+When you are creating a bug report, please include as many details as possible:
 
 **Bug Report Template:**
 
@@ -182,7 +185,9 @@ cargo watch -x run
   - `chore:` for maintenance tasks
 
 Examples:
-```
+
+```text
+
 feat: add support for HEIC image format
 
 - Add HEIC detection in media_types module
@@ -205,6 +210,7 @@ We follow the standard Rust style guidelines:
 - Prefer `&str` over `String` for function parameters when possible
 
 Example:
+
 ```rust
 /// Organizes files based on the specified organization mode.
 ///
@@ -251,6 +257,7 @@ pub async fn organize_files(
 - Use test fixtures and helper functions to reduce duplication
 
 Example test structure:
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -293,7 +300,7 @@ mod tests {
 
 ## Project Structure
 
-```
+```text
 visualvault/
 ├── src/
 │   ├── main.rs              # Application entry point
@@ -339,6 +346,7 @@ If you need help, you can:
 
 ## Recognition
 
-Contributors who submit accepted pull requests will be added to the project's AUTHORS file and recognized in the release notes.
+Contributors who submit accepted pull requests will be added to the project's AUTHORS file and recognized
+in the release notes.
 
-Thank you for contributing to VisualVault! 🚀
+Thank you for contributing to VisualVault! 🚀  

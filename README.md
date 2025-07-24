@@ -1,4 +1,6 @@
+
 # 🖼️ VisualVault
+
 A modern, terminal-based media file organizer built with Rust
 
 ![CI](https://github.com/mikeleppane/visualvault/workflows/CI/badge.svg)
@@ -31,6 +33,7 @@ A modern, terminal-based media file organizer built with Rust
 ## ✨ Features
 
 ### 🎯 Core Functionality
+
 - **Smart Organization**: Automatically organize media files by date, type, or custom rules with multiple organization modes
 - **Advanced Duplicate Detection**: Find and manage duplicate files with intelligent grouping and bulk cleanup operations
 - **Metadata Extraction**: Extract comprehensive EXIF data from images for intelligent organization and insights
@@ -39,6 +42,7 @@ A modern, terminal-based media file organizer built with Rust
 - **Smart Filtering System**: Multi-criteria filtering by date ranges, file sizes, media types, and regex patterns
 
 ### 🔍 Advanced Filtering & Search
+
 - **Date Range Filters**: Filter by specific dates, ranges, or presets like "last 7 days", "today", "last month"
 - **Size-Based Filtering**: Filter by file sizes with intuitive syntax (">10MB", "<1GB", "10MB-100MB")
 - **Media Type Filtering**: Toggle different file types (images, videos, audio, documents, archives)
@@ -47,6 +51,7 @@ A modern, terminal-based media file organizer built with Rust
 - **Real-Time Search**: Live search with instant results as you type
 
 ### 🔄 Duplicate Management
+
 - **Intelligent Duplicate Detection**: Fast hash-based duplicate identification across your entire collection
 - **Visual Group Management**: View duplicates organized in logical groups with file details
 - **Selective Deletion**: Choose specific files to keep or delete from each duplicate group
@@ -55,6 +60,7 @@ A modern, terminal-based media file organizer built with Rust
 - **Safe Deletion**: Confirmation dialogs for destructive operations
 
 ### 🖥️ Terminal User Interface
+
 - **Modern TUI Design**: Beautiful terminal interface built with Ratatui featuring intuitive layouts
 - **Multi-Tab Navigation**: Organized tabs for Files, Images, Videos, and Metadata views
 - **Real-Time Progress Tracking**: Live progress bars and status updates for all operations
@@ -64,6 +70,7 @@ A modern, terminal-based media file organizer built with Rust
 - **Visual Feedback**: Color-coded status messages, progress indicators, and focus highlighting
 
 ### ⚡ Performance & Efficiency
+
 - **Async/Await Architecture**: Built on Tokio for blazing-fast concurrent operations
 - **Configurable Worker Threads**: Adjust parallelism for optimal performance on your hardware  
 - **Intelligent Caching**: Smart file metadata caching with automatic cleanup
@@ -72,6 +79,7 @@ A modern, terminal-based media file organizer built with Rust
 - **Background Processing**: Non-blocking operations that keep the UI responsive
 
 ### ⚙️ Configuration & Customization
+
 - **Comprehensive Settings**: Detailed configuration options for all aspects of organization
 - **Multiple Organization Modes**: Yearly, Monthly, Daily, By Type, or Type + Date structures
 - **Flexible File Handling**: Options for duplicates, hidden files, metadata preservation
@@ -79,7 +87,8 @@ A modern, terminal-based media file organizer built with Rust
 - **Cross-Platform Config**: Automatic configuration management across Linux, macOS, and Windows
 - **Live Settings Updates**: Changes take effect immediately without restart
 
-### 📊 Analytics & Insights  
+### 📊 Analytics & Insights
+
 - **Collection Statistics**: Detailed breakdowns of file types, sizes, and distribution
 - **Duplicate Analysis**: Identify space waste and optimization opportunities
 - **Metadata Insights**: View EXIF data, camera information, and technical details
@@ -87,9 +96,11 @@ A modern, terminal-based media file organizer built with Rust
 - **Storage Usage**: Track space utilization and potential savings
 
 ## 🚀 Getting Started
+
 Prerequisites
- * Rust 1.85 or higher
- * Linux, macOS, or Windows
+
+- Rust 1.85 or higher
+- Linux, macOS, or Windows
 
 Installation
 
@@ -106,45 +117,63 @@ cargo run --release
 ```
 
 Quick Start
+
  1. Launch VisualVault:
+
 ```bash
 cargo run --release
 ```
 
- 2. Configure source and destination folders:
-    * Press s to open Settings
-    * Set your source folder (where your media files are)
-    * Set your destination folder (where organized files will go)
+ 2.Configure source and destination folders:
+    - Press s to open Settings
+    - Set your source folder (where your media files are)
+    - Set your destination folder (where organized files will go)
  3. Start organizing:
-    * Press r to scan for files
-    * Press o to organize them
+    - Press r to scan for files
+
+```bash
+
+cargo run --release
+```
+
+ 2.Configure source and destination folders:
+    - Press s to open Settings
+    - Set your source folder (where your media files are)
+    - Set your destination folder (where organized files will go)
+ 3.Start organizing:
+    - Press r to scan for files
+    - Press o to organize them
 
 ## 🎮 Keyboard Shortcuts
+
 Global
- * `?` or `F1` - Show help
- * `q` - Quit application
- * `Tab` / `Shift+Tab` - Navigate between tabs
- * `s` - Open settings
- * `d` - Go to dashboard
+
+- `?` or `F1` - Show help
+- `q` - Quit application
+- `Tab` / `Shift+Tab` - Navigate between tabs
+- `s` - Open settings
+- `d` - Go to dashboard
 Dashboard
- * `r` - Start scanning
- * `o` - Start organizing
- * `f` - Search files
- * `u` - update target/destination folder stats
+- `r` - Start scanning
+- `o` - Start organizing
+- `f` - Search files
+- `u` - update target/destination folder stats
 Settings
- * `↑`/`↓` - Navigate settings
- * `Enter` - Edit setting
- * `Space` - Toggle checkbox
- * `S` - Save settings
- * `R` - Reset to defaults
+- `↑`/`↓` - Navigate settings
+- `Enter` - Edit setting
+- `Space` - Toggle checkbox
+- `S` - Save settings
+- `R` - Reset to defaults
 
 ## 🛠️ Configuration
+
 VisualVault stores its configuration in:
 
- * Linux: ~/.config/visualvault/config.toml
- * macOS: ~/Library/Application Support/visualvault/config.toml
- * Windows: %APPDATA%\visualvault\config.toml
+- macOS: ~/Library/Application Support/visualvault/config.toml
+- Windows: %APPDATA%\visualvault\config.toml
+
 Example Configuration
+
 ```toml
 source_folder = "/home/mikko/dev/visualvault/testing"
 destination_folder = "/home/mikko/dev/visualvault/testing/images"
@@ -165,17 +194,21 @@ parallel_processing = true
 skip_hidden_files = false
 optimize_for_ssd = false
 ```
+
 ## 📂 Organization Modes
- * Yearly: 2024/image.jpg
- * Monthly: 2024/03-March/image.jpg
- * Daily: 2024/03/15/image.jpg
- * By Type: Images/image.jpg
- * Type + Date: Images/2024/03-March/image.jpg
+
+- Yearly: 2024/image.jpg
+- Monthly: 2024/03-March/image.jpg
+- Daily: 2024/03/15/image.jpg
+- By Type: Images/image.jpg
+- Type + Date: Images/2024/03-March/image.jpg
 
 
 ## 🏗️ Architecture
 
-VisualVault is built with a modular, async-first architecture that prioritizes performance, maintainability, and user experience. The application follows a layered architecture with clear separation of concerns and leverages Rust's ownership model for memory safety and performance.
+VisualVault is built with a modular, async-first architecture that prioritizes performance, maintainability, and user experience.
+The application follows a layered architecture with clear separation of concerns and leverages Rust's ownership model
+for memory safety and performance.
 
 ### High-Level Architecture
 
@@ -374,6 +407,7 @@ pub enum AppState {
 ```
 
 Key responsibilities:
+
 - Maintains application state and UI state
 - Coordinates between UI and business logic
 - Manages configuration and settings
@@ -402,6 +436,7 @@ graph LR
 ```
 
 Features:
+
 - Async directory traversal with `walkdir`
 - Parallel metadata extraction
 - Smart caching with staleness detection
@@ -494,6 +529,7 @@ graph TB
 ```
 
 Key performance features:
+
 - **Non-blocking UI**: UI runs on separate task with 16ms refresh rate
 - **Parallel File Processing**: Configurable worker thread pool
 - **Streaming**: Large directories processed in chunks
@@ -555,6 +591,7 @@ pub struct Settings {
 ```
 
 Platform-specific config locations:
+
 - Linux: `~/.config/visualvault/config.toml`
 - macOS: `~/Library/Application Support/visualvault/config.toml`
 - Windows: `%APPDATA%\visualvault\config.toml`
@@ -615,6 +652,7 @@ mod tests {
 ```
 
 Test categories:
+
 - **Unit Tests**: Individual component testing
 - **Integration Tests**: Complete workflow testing
 - **Property Tests**: Fuzzing with `proptest`
@@ -645,11 +683,14 @@ pub trait OrganizationStrategy: Send + Sync {
 }
 ```
 
-This architecture provides a solid foundation for the terminal-based media organizer while maintaining performance, safety, and extensibility.
+This architecture provides a solid foundation for the terminal-based media organizer while maintaining performance,
+safety, and extensibility.
 
 
-##  🤝 Contributing
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to
+discuss what you would like to change.
 
 ### Quick Start for Contributors
 
@@ -677,7 +718,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide.
 
 ### 🧪 Testing
 
-VisualVault has a comprehensive test suite to ensure reliability and correctness. We use both standard Rust tests and [cargo-nextest](https://nexte.st/) for improved test execution.
+VisualVault has a comprehensive test suite to ensure reliability and correctness. We use both standard Rust tests and
+[cargo-nextest](https://nexte.st/) for improved test execution.
 
 #### Running Tests
 
@@ -745,12 +787,14 @@ fail-fast = true
 #### Writing Tests
 
 When contributing, please ensure:
+
 - All new features have corresponding unit tests
 - Integration tests cover major workflows
 - Tests use descriptive names following Rust conventions
 - Use test fixtures and helper functions to reduce duplication
 
 Example test structure:
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -769,6 +813,7 @@ mod tests {
 #### Continuous Integration
 
 Tests run automatically on all pull requests via GitHub Actions:
+
 - ✅ Unit and integration tests on Linux, macOS, and Windows
 - ✅ Clippy linting with strict warnings
 - ✅ Format checking with rustfmt
@@ -776,7 +821,8 @@ Tests run automatically on all pull requests via GitHub Actions:
 
 ### 🚀 Performance Benchmarks
 
-VisualVault includes comprehensive performance benchmarks to ensure optimal performance across different workloads and system configurations.
+VisualVault includes comprehensive performance benchmarks to ensure optimal performance across different workloads and
+system configurations.
 
 #### Running Benchmarks
 
@@ -804,21 +850,25 @@ cargo bench
 #### Benchmark Suites
 
 **Scanner Performance** (`scanner_benchmark`)
+
 - Tests file discovery performance with varying file counts (100, 1000, 5000 files)
 - Measures parallel processing efficiency with different thread counts
 - Benchmarks metadata extraction and caching performance
 
 **Organizer Performance** (`organizer_benchmark`)
+
 - Benchmarks different organization modes (yearly, monthly, by type)
 - Tests file movement operations with various file counts
 - Measures duplicate handling performance
 
 **Duplicate Detection** (`duplicate_benchmark`)
+
 - Tests hash calculation speed with different algorithms
 - Benchmarks duplicate identification with varying duplicate ratios
 - Measures performance with different collection sizes
 
 **Cache Operations** (`cache_benchmark`)
+
 - Benchmarks cache read/write performance
 - Tests cache cleanup and stale entry removal
 - Measures serialization/deserialization overhead
@@ -835,11 +885,13 @@ Our benchmarks track key performance indicators:
 | Duplicate Detection | 1,000 | ~30ms | 33,000 files/sec |
 | Cache Write | 1,000 | ~20ms | 50,000 entries/sec |
 
-*Performance varies based on hardware, file system, and system load*
+**Note:** *Performance varies based on hardware, file system, and system load*
+
 
 #### Continuous Performance Monitoring
 
 Performance is continuously monitored through GitHub Actions:
+
 - Benchmarks run automatically on pull requests
 - Performance regressions are flagged if they exceed 200% threshold
 - Historical performance data is tracked for trend analysis
@@ -867,6 +919,7 @@ criterion_main!(benches);
 #### Performance Best Practices
 
 When optimizing for performance:
+
 1. **Profile First**: Use benchmarks to identify bottlenecks
 2. **Measure Impact**: Verify improvements with benchmarks
 3. **Consider Trade-offs**: Balance performance with code clarity
@@ -876,6 +929,7 @@ When optimizing for performance:
 #### Hardware Considerations
 
 Benchmarks are optimized for different hardware configurations:
+
 - **SSD Optimization**: Enable `optimize_for_ssd` setting for better SSD performance
 - **Thread Scaling**: Adjust `worker_threads` based on CPU cores
 - **Memory Usage**: Configure `buffer_size` based on available RAM
@@ -883,9 +937,10 @@ Benchmarks are optimized for different hardware configurations:
 
 
 ## 📝 Roadmap
- * <input disabled="" type="checkbox"> Add video metadata extraction
- * <input disabled="" type="checkbox"> Add export/import functionality
- * <input disabled="" type="checkbox"> Cloud storage integration
+
+- <input disabled="" type="checkbox"> Add video metadata extraction
+- <input disabled="" type="checkbox"> Add export/import functionality
+- <input disabled="" type="checkbox"> Cloud storage integration
 
 ## 🤝 Community
 
@@ -895,11 +950,14 @@ We have a [Code of Conduct](CODE_OF_CONDUCT.md) that all contributors and partic
 
 
 ## 📄 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+
+This project is licensed under the MIT License - see the [LICENSE file](LICENSE.md) for details.
 
 ## 🙏 Acknowledgments
- * built with Ratatui - Terminal UI framework
- * Uses Tokio - Async runtime for Rust
- * walkdir - Recursive directory traversal
- * kamadak-exif - EXIF metadata extraction
+
+- built with Ratatui - Terminal UI framework
+- Uses Tokio - Async runtime for Rust
+- walkdir - Recursive directory traversal
+- kamadak-exif - EXIF metadata extraction
+
 <p align="center"> Written with ❤️ in Rust & built with Ratatui </p>

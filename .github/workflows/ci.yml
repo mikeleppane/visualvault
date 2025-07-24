@@ -29,6 +29,47 @@ jobs:
           echo "Found typos in the codebase. Please fix them before merging." >> $GITHUB_STEP_SUMMARY
           echo "You can run 'typos' locally to find and fix typos." >> $GITHUB_STEP_SUMMARY
 
+  markdown-lint:
+    name: Markdown Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Need full history to detect file changes
+      
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            **/*.md
+            **/*.markdown
+      
+      - name: List changed markdown files
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          echo "## 📝 Changed Markdown Files" >> $GITHUB_STEP_SUMMARY
+          echo "The following markdown files were changed:" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "$file" >> $GITHUB_STEP_SUMMARY
+          done
+          echo '```' >> $GITHUB_STEP_SUMMARY
+      
+      - name: Run markdownlint
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: ${{ steps.changed-files.outputs.all_changed_files }}
+          config: .markdownlint.yml
+          fix: false
+      
+      - name: Skip message
+        if: steps.changed-files.outputs.any_changed == 'false'
+        run: |
+          echo "## ✅ Markdown Lint Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "No markdown files were changed in this PR." >> $GITHUB_STEP_SUMMARY
+
   format:
     name: Format Check
     runs-on: ubuntu-latest
