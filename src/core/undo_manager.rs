@@ -260,6 +260,40 @@ impl UndoManager {
         }
     }
 
+    fn cleanup_empty_directories(path: &Path, max_depth: usize) {
+        let mut current = path.to_path_buf();
+        let mut depth = 0;
+
+        while depth < max_depth {
+            // Check if the current directory is empty
+            if let Ok(mut entries) = fs::read_dir(&current) {
+                if entries.next().is_none() {
+                    // Directory is empty, remove it
+                    if let Err(e) = fs::remove_dir(&current) {
+                        // Log but don't fail the operation
+                        eprintln!("Failed to remove empty directory {}: {}", current.display(), e);
+                        break;
+                    }
+
+                    // Move to parent for next iteration
+                    if let Some(parent) = current.parent() {
+                        current = parent.to_path_buf();
+                    } else {
+                        break;
+                    }
+                } else {
+                    // Directory is not empty, stop here
+                    break;
+                }
+            } else {
+                // Can't read directory, stop here
+                break;
+            }
+
+            depth += 1;
+        }
+    }
+
     #[allow(clippy::too_many_lines)]
     /// Perform the actual undo operation
     fn undo_operation(operation: &UndoableOperation) -> Result<String> {
@@ -268,6 +302,12 @@ impl UndoManager {
                 // Undo move by moving back
                 if destination.exists() {
                     fs::rename(destination, source)?;
+
+                    // Clean up empty directories left behind
+                    if let Some(parent) = destination.parent() {
+                        Self::cleanup_empty_directories(parent, 4);
+                    }
+
                     Ok(format!("Restored {} to original location", source.display()))
                 } else {
                     Err(VisualVaultError::UndoError {
@@ -281,6 +321,12 @@ impl UndoManager {
                 // Undo copy by deleting the copy
                 if destination.exists() {
                     fs::remove_file(destination)?;
+
+                    // Clean up empty directories
+                    if let Some(parent) = destination.parent() {
+                        Self::cleanup_empty_directories(parent, 4);
+                    }
+
                     Ok(format!("Removed copy at {}", destination.display()))
                 } else {
                     Ok("Copy already removed".to_string())
@@ -310,14 +356,27 @@ impl UndoManager {
             OperationType::BatchMove { operations } => {
                 let mut success_count = 0;
                 let mut errors = Vec::new();
+                let mut cleaned_dirs = std::collections::HashSet::new();
 
                 for op in operations.iter().rev() {
                     if op.destination.exists() {
                         match fs::rename(&op.destination, &op.source) {
-                            Ok(()) => success_count += 1,
+                            Ok(()) => {
+                                success_count += 1;
+
+                                // Track directories to clean up
+                                if let Some(parent) = op.destination.parent() {
+                                    cleaned_dirs.insert(parent.to_path_buf());
+                                }
+                            }
                             Err(e) => errors.push(format!("{}: {}", op.source.display(), e)),
                         }
                     }
+                }
+
+                // Clean up empty directories
+                for dir in cleaned_dirs {
+                    Self::cleanup_empty_directories(&dir, 4);
                 }
 
                 if errors.is_empty() {
@@ -350,13 +409,21 @@ impl UndoManager {
             OperationType::OrganizeFiles { operations } => {
                 let mut success_count = 0;
                 let mut errors = Vec::new();
+                let mut cleaned_dirs = std::collections::HashSet::new();
 
                 for op in operations.iter().rev() {
                     match op {
                         FileOperation::Move(move_op) => {
                             if move_op.destination.exists() {
                                 match fs::rename(&move_op.destination, &move_op.source) {
-                                    Ok(()) => success_count += 1,
+                                    Ok(()) => {
+                                        success_count += 1;
+
+                                        // Track directories to clean up
+                                        if let Some(parent) = move_op.destination.parent() {
+                                            cleaned_dirs.insert(parent.to_path_buf());
+                                        }
+                                    }
                                     Err(e) => errors.push(format!("{}: {}", move_op.source.display(), e)),
                                 }
                             }
@@ -364,7 +431,14 @@ impl UndoManager {
                         FileOperation::Copy { destination, .. } => {
                             if destination.exists() {
                                 match fs::remove_file(destination) {
-                                    Ok(()) => success_count += 1,
+                                    Ok(()) => {
+                                        success_count += 1;
+
+                                        // Track directories to clean up
+                                        if let Some(parent) = destination.parent() {
+                                            cleaned_dirs.insert(parent.to_path_buf());
+                                        }
+                                    }
                                     Err(e) => errors.push(format!("{}: {}", destination.display(), e)),
                                 }
                             }
@@ -380,6 +454,11 @@ impl UndoManager {
                             }
                         }
                     }
+                }
+
+                // Clean up empty directories
+                for dir in cleaned_dirs {
+                    Self::cleanup_empty_directories(&dir, 4);
                 }
 
                 if errors.is_empty() {
@@ -1029,6 +1108,278 @@ mod tests {
         let metadata = history[0].metadata.as_ref().unwrap();
         assert_eq!(metadata["user"], "test_user");
         assert_eq!(metadata["reason"], "organization");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_undo_cleans_up_empty_directories() -> Result<()> {
+        let (manager, temp_dir) = create_test_manager().await?;
+
+        // Create a file
+        let file = create_test_file(temp_dir.path(), "test.jpg", "content").await?;
+
+        // Create a deeply nested destination
+        let dest_dir = temp_dir.path().join("2024").join("03-March").join("Images");
+        fs::create_dir_all(&dest_dir).await?;
+        let dest = dest_dir.join("test.jpg");
+
+        // Move the file
+        fs::rename(&file, &dest).await?;
+
+        // Record the move
+        manager.record_move(&file, &dest).await?;
+
+        // Verify directories exist
+        assert!(temp_dir.path().join("2024").exists());
+        assert!(temp_dir.path().join("2024").join("03-March").exists());
+        assert!(dest_dir.exists());
+
+        // Undo the move
+        let result = manager.undo().await?;
+        assert!(result.is_some());
+
+        // Verify file is restored
+        assert!(file.exists());
+        assert!(!dest.exists());
+
+        // Verify empty directories were cleaned up
+        assert!(!dest_dir.exists(), "Images directory should be removed");
+        assert!(
+            !temp_dir.path().join("2024").join("03-March").exists(),
+            "03-March directory should be removed"
+        );
+        assert!(
+            !temp_dir.path().join("2024").exists(),
+            "2024 directory should be removed"
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_undo_preserves_non_empty_directories() -> Result<()> {
+        let (manager, temp_dir) = create_test_manager().await?;
+
+        // Create files
+        let file1 = create_test_file(temp_dir.path(), "test1.jpg", "content1").await?;
+        let file2 = create_test_file(temp_dir.path(), "test2.jpg", "content2").await?;
+
+        // Create destination directory
+        let dest_dir = temp_dir.path().join("organized");
+        fs::create_dir_all(&dest_dir).await?;
+
+        // Move only one file
+        let dest1 = dest_dir.join("test1.jpg");
+        fs::rename(&file1, &dest1).await?;
+        manager.record_move(&file1, &dest1).await?;
+
+        // Move second file to same directory
+        let dest2 = dest_dir.join("test2.jpg");
+        fs::rename(&file2, &dest2).await?;
+
+        // Undo only the first move
+        let result = manager.undo().await?;
+        assert!(result.is_some());
+
+        // Verify first file is restored
+        assert!(file1.exists());
+        assert!(!dest1.exists());
+
+        // Verify directory still exists because it contains test2.jpg
+        assert!(dest_dir.exists(), "Directory should remain because it's not empty");
+        assert!(dest2.exists(), "Second file should still be in destination");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_undo_removes_type_directories() -> Result<()> {
+        let (manager, temp_dir) = create_test_manager().await?;
+
+        // Create files of different types
+        let image_file = create_test_file(temp_dir.path(), "photo.jpg", "image content").await?;
+        let video_file = create_test_file(temp_dir.path(), "movie.mp4", "video content").await?;
+        let doc_file = create_test_file(temp_dir.path(), "document.pdf", "doc content").await?;
+
+        // Create type-based destination directories
+        let dest_base = temp_dir.path().join("organized");
+        let images_dir = dest_base.join("Images");
+        let videos_dir = dest_base.join("Videos");
+        let documents_dir = dest_base.join("Documents");
+
+        fs::create_dir_all(&images_dir).await?;
+        fs::create_dir_all(&videos_dir).await?;
+        fs::create_dir_all(&documents_dir).await?;
+
+        // Move files to their type directories
+        let image_dest = images_dir.join("photo.jpg");
+        let video_dest = videos_dir.join("movie.mp4");
+        let doc_dest = documents_dir.join("document.pdf");
+
+        fs::rename(&image_file, &image_dest).await?;
+        fs::rename(&video_file, &video_dest).await?;
+        fs::rename(&doc_file, &doc_dest).await?;
+
+        // Record the organization as a batch operation
+        let operations = vec![
+            FileOperation::Move(MoveOperation {
+                source: image_file.clone(),
+                destination: image_dest.clone(),
+            }),
+            FileOperation::Move(MoveOperation {
+                source: video_file.clone(),
+                destination: video_dest.clone(),
+            }),
+            FileOperation::Move(MoveOperation {
+                source: doc_file.clone(),
+                destination: doc_dest.clone(),
+            }),
+        ];
+        manager.record_organize(operations).await?;
+
+        // Verify all directories exist before undo
+        assert!(dest_base.exists());
+        assert!(images_dir.exists());
+        assert!(videos_dir.exists());
+        assert!(documents_dir.exists());
+
+        // Undo the organization
+        let result = manager.undo().await?;
+        assert!(result.is_some());
+        assert!(result.unwrap().contains("Undid organization of 3 files"));
+
+        // Verify all files are restored to original locations
+        assert!(image_file.exists(), "Image file should be restored");
+        assert!(video_file.exists(), "Video file should be restored");
+        assert!(doc_file.exists(), "Document file should be restored");
+
+        // Verify files are no longer in type directories
+        assert!(!image_dest.exists());
+        assert!(!video_dest.exists());
+        assert!(!doc_dest.exists());
+
+        // Verify all type directories are removed
+        assert!(!images_dir.exists(), "Images directory should be removed");
+        assert!(!videos_dir.exists(), "Videos directory should be removed");
+        assert!(!documents_dir.exists(), "Documents directory should be removed");
+        assert!(!dest_base.exists(), "Base organized directory should be removed");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_undo_type_directories_with_date_organization() -> Result<()> {
+        let (manager, temp_dir) = create_test_manager().await?;
+
+        // Create files of different types
+        let image_file = create_test_file(temp_dir.path(), "photo.jpg", "image content").await?;
+        let video_file = create_test_file(temp_dir.path(), "movie.mp4", "video content").await?;
+
+        // Create type-based destination directories with date organization
+        // Simulating organize by monthly with separate_videos enabled
+        let dest_base = temp_dir.path().join("organized");
+        let date_dir = dest_base.join("2024").join("03-March");
+        let images_date_dir = date_dir.clone();
+        let videos_date_dir = dest_base.join("Videos").join("2024").join("03-March");
+
+        fs::create_dir_all(&images_date_dir).await?;
+        fs::create_dir_all(&videos_date_dir).await?;
+
+        // Move files to their respective directories
+        let image_dest = images_date_dir.join("photo.jpg");
+        let video_dest = videos_date_dir.join("movie.mp4");
+
+        fs::rename(&image_file, &image_dest).await?;
+        fs::rename(&video_file, &video_dest).await?;
+
+        // Record the organization
+        let operations = vec![
+            FileOperation::Move(MoveOperation {
+                source: image_file.clone(),
+                destination: image_dest.clone(),
+            }),
+            FileOperation::Move(MoveOperation {
+                source: video_file.clone(),
+                destination: video_dest.clone(),
+            }),
+        ];
+        manager.record_organize(operations).await?;
+
+        // Undo the organization
+        let result = manager.undo().await?;
+        assert!(result.is_some());
+
+        // Verify files are restored
+        assert!(image_file.exists());
+        assert!(video_file.exists());
+
+        // Verify all directories are cleaned up
+        assert!(!videos_date_dir.exists(), "Videos/2024/03-March should be removed");
+        assert!(
+            !dest_base.join("Videos").join("2024").exists(),
+            "Videos/2024 should be removed"
+        );
+        assert!(!dest_base.join("Videos").exists(), "Videos directory should be removed");
+        assert!(!images_date_dir.exists(), "2024/03-March should be removed");
+        assert!(!dest_base.join("2024").exists(), "2024 directory should be removed");
+        assert!(!dest_base.exists(), "Base organized directory should be removed");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_undo_partial_type_directories() -> Result<()> {
+        let (manager, temp_dir) = create_test_manager().await?;
+
+        // Create multiple image files
+        let image1 = create_test_file(temp_dir.path(), "photo1.jpg", "content1").await?;
+        let image2 = create_test_file(temp_dir.path(), "photo2.jpg", "content2").await?;
+
+        // Create Images directory
+        let images_dir = temp_dir.path().join("organized").join("Images");
+        fs::create_dir_all(&images_dir).await?;
+
+        // Move both files to Images directory
+        let dest1 = images_dir.join("photo1.jpg");
+        let dest2 = images_dir.join("photo2.jpg");
+
+        fs::rename(&image1, &dest1).await?;
+        fs::rename(&image2, &dest2).await?;
+
+        // Record only the first move operation
+        manager.record_move(&image1, &dest1).await?;
+
+        // Undo the first move
+        let result = manager.undo().await?;
+        assert!(result.is_some());
+
+        // Verify first file is restored
+        assert!(image1.exists());
+        assert!(!dest1.exists());
+
+        // Verify Images directory still exists because it contains photo2.jpg
+        assert!(images_dir.exists(), "Images directory should remain with photo2.jpg");
+        assert!(dest2.exists(), "photo2.jpg should still be in Images directory");
+
+        // Manually remove the second file to test cleanup
+        fs::remove_file(&dest2).await?;
+
+        // Now record and undo a dummy operation to trigger cleanup
+        let dummy_src = temp_dir.path().join("dummy.txt");
+        let dummy_dst = images_dir.join("dummy.txt");
+        fs::write(&dummy_src, "dummy").await?;
+        fs::rename(&dummy_src, &dummy_dst).await?;
+        manager.record_move(&dummy_src, &dummy_dst).await?;
+
+        manager.undo().await?;
+
+        // Now Images directory should be removed
+        assert!(!images_dir.exists(), "Empty Images directory should be removed");
+        assert!(
+            !temp_dir.path().join("organized").exists(),
+            "Empty organized directory should be removed"
+        );
 
         Ok(())
     }
