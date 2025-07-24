@@ -4,7 +4,7 @@
 - **OS**: Linux
 - **CPU**: $(lscpu | grep "Model name" | cut -d':' -f2 | xargs)
 - **Rust Version**: $(rustc --version)
-- **Commit**: ad6fc5934142599e54b3111abc85b4da62bf9400
+- **Commit**: 5000808e4cf75afeb70653c5d6657667405f9f27
 - **Branch**: main
 
 ## Results
@@ -19,19 +19,19 @@ test duplicate_ratios/10% ... bench: 3 ns/iter (+/- 0)
 test duplicate_ratios/30% ... bench: 3 ns/iter (+/- 0)
 test duplicate_ratios/50% ... bench: 3 ns/iter (+/- 0)
 test duplicate_ratios/70% ... bench: 3 ns/iter (+/- 0)
-test organize_by_type/100 ... bench: 5353252 ns/iter (+/- 195181)
-test organize_by_type/500 ... bench: 28619936 ns/iter (+/- 662086)
-test organize_by_type/1000 ... bench: 57579158 ns/iter (+/- 2085938)
-test organize_modes/yearly ... bench: 57301414 ns/iter (+/- 1836371)
-test organize_modes/monthly ... bench: 60034918 ns/iter (+/- 1561974)
-test organize_modes/type ... bench: 58911164 ns/iter (+/- 1501464)
-test scanner/100 ... bench: 2678426 ns/iter (+/- 26023)
-test scanner/1000 ... bench: 24185918 ns/iter (+/- 281502)
-test scanner/5000 ... bench: 123452427 ns/iter (+/- 1442588)
-test scanner_parallel/1 ... bench: 140518475 ns/iter (+/- 2674006)
-test scanner_parallel/2 ... bench: 43026540 ns/iter (+/- 258004)
-test scanner_parallel/4 ... bench: 38896128 ns/iter (+/- 478705)
-test scanner_parallel/8 ... bench: 36954140 ns/iter (+/- 333855)
+test organize_by_type/100 ... bench: 5244836 ns/iter (+/- 121376)
+test organize_by_type/500 ... bench: 27964946 ns/iter (+/- 1260819)
+test organize_by_type/1000 ... bench: 57821791 ns/iter (+/- 2100009)
+test organize_modes/yearly ... bench: 58079757 ns/iter (+/- 1451213)
+test organize_modes/monthly ... bench: 60238287 ns/iter (+/- 2311774)
+test organize_modes/type ... bench: 57675975 ns/iter (+/- 1966807)
+test scanner/100 ... bench: 2728575 ns/iter (+/- 42269)
+test scanner/1000 ... bench: 25161867 ns/iter (+/- 594615)
+test scanner/5000 ... bench: 125318043 ns/iter (+/- 5114516)
+test scanner_parallel/1 ... bench: 143128048 ns/iter (+/- 3672138)
+test scanner_parallel/2 ... bench: 44569399 ns/iter (+/- 427471)
+test scanner_parallel/4 ... bench: 41698581 ns/iter (+/- 777213)
+test scanner_parallel/8 ... bench: 39052384 ns/iter (+/- 730567)
 ```
 ## Detailed Statistics
 ### estimates
@@ -40,20 +40,20 @@ test scanner_parallel/8 ... bench: 36954140 ns/iter (+/- 333855)
   "mean": {
     "confidence_interval": {
       "confidence_level": 0.95,
-      "lower_bound": -0.01700677408478755,
-      "upper_bound": -0.0024373449855314435
+      "lower_bound": -0.0302300851644456,
+      "upper_bound": -0.010984173980199192
     },
-    "point_estimate": -0.009680445215821676,
-    "standard_error": 0.003728920628035764
+    "point_estimate": -0.020911552454959126,
+    "standard_error": 0.004944743100740806
   },
   "median": {
     "confidence_interval": {
       "confidence_level": 0.95,
-      "lower_bound": -0.01913950135716469,
-      "upper_bound": 0.0033465749195848993
+      "lower_bound": -0.03718582875638188,
+      "upper_bound": -0.009770272754433096
     },
-    "point_estimate": -0.010067598999485727,
-    "standard_error": 0.005648773304590443
+    "point_estimate": -0.022936893003273062,
+    "standard_error": 0.007448793751833638
   }
 }
 ```
@@ -74,11 +74,11 @@ test scanner_parallel/8 ... bench: 36954140 ns/iter (+/- 333855)
     180.0
   ],
   "times": [
-    47537944.0,
-    96010312.0,
-    141640230.0,
-    188481224.0,
-    237160411.0,
+    47993227.0,
+    95945525.0,
+    143337334.0,
+    191291398.0,
+    238898027.0,
 ```
 ### benchmark
 ```json
@@ -98,29 +98,29 @@ test scanner_parallel/8 ... bench: 36954140 ns/iter (+/- 333855)
   "mean": {
     "confidence_interval": {
       "confidence_level": 0.95,
-      "lower_bound": 2637724.4681481486,
-      "upper_bound": 2660648.572325838
+      "lower_bound": 2660688.2656203704,
+      "upper_bound": 2681497.622365521
     },
-    "point_estimate": 2649513.785936949,
-    "standard_error": 5872.826427299951
+    "point_estimate": 2669252.619111552,
+    "standard_error": 5504.805559156115
   },
   "median": {
     "confidence_interval": {
       "confidence_level": 0.95,
-      "lower_bound": 2631982.0555555555,
-      "upper_bound": 2668259.7685185187
+      "lower_bound": 2656824.972222222,
+      "upper_bound": 2671552.703703704
     },
-    "point_estimate": 2651460.985008818,
-    "standard_error": 9983.20318399398
+    "point_estimate": 2665990.34375,
+    "standard_error": 3432.4760422734757
   },
   "median_abs_dev": {
 ```
 ### tukey
 ```json
 [
-  2542544.609722222,
-  2589565.295138889,
-  2714953.789583334,
-  2761974.4750000006
+  2623860.918055555,
+  2641384.0076388884,
+  2688112.246527778,
+  2705635.3361111116
 ]
 ```

@@ -14,20 +14,20 @@ Criterion.rs ERROR: Error in Gnuplot:          line 0: Bad format character
 
 
 
-test organize_by_type/100 ... bench:   5,353,252 ns/iter (+/- 195,181)
-test organize_by_type/500 ... bench:  28,619,936 ns/iter (+/- 662,086)
-test organize_by_type/1000 ... bench:  57,579,158 ns/iter (+/- 2,085,938)
+test organize_by_type/100 ... bench:   5,244,836 ns/iter (+/- 121,376)
+test organize_by_type/500 ... bench:  27,964,946 ns/iter (+/- 1,260,819)
+test organize_by_type/1000 ... bench:  57,821,791 ns/iter (+/- 2,100,009)
 
-test organize_modes/yearly ... bench:  57,301,414 ns/iter (+/- 1,836,371)
-test organize_modes/monthly ... bench:  60,034,918 ns/iter (+/- 1,561,974)
-test organize_modes/type ... bench:  58,911,164 ns/iter (+/- 1,501,464)
+test organize_modes/yearly ... bench:  58,079,757 ns/iter (+/- 1,451,213)
+test organize_modes/monthly ... bench:  60,238,287 ns/iter (+/- 2,311,774)
+test organize_modes/type ... bench:  57,675,975 ns/iter (+/- 1,966,807)
 
-test scanner/100 ... bench:   2,678,426 ns/iter (+/- 26,023)
-test scanner/1000 ... bench:  24,185,918 ns/iter (+/- 281,502)
-test scanner/5000 ... bench: 123,452,427 ns/iter (+/- 1,442,588)
+test scanner/100 ... bench:   2,728,575 ns/iter (+/- 42,269)
+test scanner/1000 ... bench:  25,161,867 ns/iter (+/- 594,615)
+test scanner/5000 ... bench: 125,318,043 ns/iter (+/- 5,114,516)
 
-test scanner_parallel/1 ... bench: 140,518,475 ns/iter (+/- 2,674,006)
-test scanner_parallel/2 ... bench:  43,026,540 ns/iter (+/- 258,004)
-test scanner_parallel/4 ... bench:  38,896,128 ns/iter (+/- 478,705)
-test scanner_parallel/8 ... bench:  36,954,140 ns/iter (+/- 333,855)
+test scanner_parallel/1 ... bench: 143,128,048 ns/iter (+/- 3,672,138)
+test scanner_parallel/2 ... bench:  44,569,399 ns/iter (+/- 427,471)
+test scanner_parallel/4 ... bench:  41,698,581 ns/iter (+/- 777,213)
+test scanner_parallel/8 ... bench:  39,052,384 ns/iter (+/- 730,567)
 
