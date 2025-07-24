@@ -1,5 +1,6 @@
 name: Benchmark
 # This workflow runs performance benchmarks on the VisualVault project.
+# It is triggered on pushes to main and develop branches, and on pull requests to main.
 on:
   push:
     branches: [ main, develop ]
