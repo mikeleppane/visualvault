@@ -24,6 +24,13 @@ A modern, terminal-based media file organizer built with Rust
   <i>Click the image above to see VisualVault's Duplicate Detector in action</i>
 </p>
 
+
+[![Watch the video](https://img.youtube.com/vi/iA52wnHlbxQ/maxresdefault.jpg)](https://youtu.be/iA52wnHlbxQ)
+
+<p align="center">
+  <i>Click the image above to see VisualVault's Undo/Redo operation in action</i>
+</p>
+
 ## 📸 Screenshot
 
 <p align="center">
