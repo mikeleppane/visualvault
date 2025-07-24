@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1753329702707,
+  "lastUpdate": 1753330747051,
   "repoUrl": "https://github.com/mikeleppane/visualvault",
   "entries": {
     "VisualVault Benchmark": [
@@ -319,6 +319,168 @@ window.BENCHMARK_DATA = {
             "name": "scanner_parallel/8",
             "value": 40464900,
             "range": "± 317019",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "mleppan23@gmail.com",
+            "name": "Mikko Leppänen",
+            "username": "mikeleppane"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "5000808e4cf75afeb70653c5d6657667405f9f27",
+          "message": "fix: improve workflow description for clarity on trigger events (#3)",
+          "timestamp": "2025-07-24T07:08:34+03:00",
+          "tree_id": "4e9810cff6d04e28f13d49d88ea287ed7816583c",
+          "url": "https://github.com/mikeleppane/visualvault/commit/5000808e4cf75afeb70653c5d6657667405f9f27"
+        },
+        "date": 1753330746605,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "duplicate_detection/1000",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_detection/5000",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_detection/10000",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_detection/1000 #2",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_detection/5000 #2",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_detection/10000 #2",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_ratios/10%",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_ratios/30%",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_ratios/50%",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "duplicate_ratios/70%",
+            "value": 3,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_by_type/100",
+            "value": 5244836,
+            "range": "± 121376",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_by_type/500",
+            "value": 27964946,
+            "range": "± 1260819",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_by_type/1000",
+            "value": 57821791,
+            "range": "± 2100009",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_modes/yearly",
+            "value": 58079757,
+            "range": "± 1451213",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_modes/monthly",
+            "value": 60238287,
+            "range": "± 2311774",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "organize_modes/type",
+            "value": 57675975,
+            "range": "± 1966807",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner/100",
+            "value": 2728575,
+            "range": "± 42269",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner/1000",
+            "value": 25161867,
+            "range": "± 594615",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner/5000",
+            "value": 125318043,
+            "range": "± 5114516",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner_parallel/1",
+            "value": 143128048,
+            "range": "± 3672138",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner_parallel/2",
+            "value": 44569399,
+            "range": "± 427471",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner_parallel/4",
+            "value": 41698581,
+            "range": "± 777213",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "scanner_parallel/8",
+            "value": 39052384,
+            "range": "± 730567",
             "unit": "ns/iter"
           }
         ]
