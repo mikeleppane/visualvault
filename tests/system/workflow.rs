@@ -139,7 +139,8 @@ async fn test_complete_system_workflow() -> Result<()> {
 
     // 5. Organize files
     println!("Organizing files...");
-    let organizer = FileOrganizer::new();
+    let config_dir = dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+    let organizer = FileOrganizer::new(config_dir).await.unwrap();
     let organize_result = organizer
         .organize_files_with_duplicates(files.clone(), duplicates.clone(), &settings, progress.clone())
         .await?;

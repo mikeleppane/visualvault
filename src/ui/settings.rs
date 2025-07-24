@@ -177,6 +177,11 @@ fn draw_general_settings(f: &mut Frame, area: Rect, app: &App) {
             "Verbose output",
             "Show detailed processing information",
         ),
+        (
+            settings.undo_enabled,
+            "Enable undo history",
+            "Keep a history of changes for undo operations",
+        ),
     ];
 
     let option_items: Vec<ListItem> = options

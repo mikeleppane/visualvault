@@ -1,6 +1,6 @@
 use ahash::AHashMap;
+use ahash::AHashSet;
 use color_eyre::eyre::Result;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -10,6 +10,9 @@ use tracing::error;
 
 use crate::app::OrganizeResult;
 use crate::config::settings::OrganizationMode;
+use crate::core::UndoManager;
+use crate::core::undo_manager::FileOperation;
+use crate::core::undo_manager::MoveOperation;
 use crate::{
     config::Settings,
     models::{FileType, MediaFile},
@@ -19,21 +22,27 @@ use crate::{
 pub struct FileOrganizer {
     is_organizing: Arc<Mutex<bool>>,
     result: Arc<Mutex<Option<Result<usize>>>>,
-}
-
-impl Default for FileOrganizer {
-    fn default() -> Self {
-        Self {
-            is_organizing: Arc::new(Mutex::new(false)),
-            result: Arc::new(Mutex::new(None)),
-        }
-    }
+    undo_manager: Arc<UndoManager>,
 }
 
 impl FileOrganizer {
+    /// Creates a new `FileOrganizer` instance.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the undo manager fails to initialize with the provided config directory.
+    pub async fn new(config_dir: PathBuf) -> Result<Self> {
+        Ok(Self {
+            is_organizing: Arc::new(Mutex::new(false)),
+            result: Arc::new(Mutex::new(None)),
+            undo_manager: Arc::new(UndoManager::new_with_history(config_dir).await?),
+        })
+    }
+
+    /// Get a reference to the undo manager
     #[must_use]
-    pub fn new() -> Self {
-        Self::default()
+    pub fn undo_manager(&self) -> &Arc<UndoManager> {
+        &self.undo_manager
     }
 
     /// Organizes files into the configured destination folder, handling duplicates according to settings.
@@ -57,7 +66,7 @@ impl FileOrganizer {
             .ok_or_else(|| color_eyre::eyre::eyre!("Destination folder not configured"))?;
 
         // Track which files have been processed to avoid duplicates
-        let mut processed_hashes: HashSet<String> = HashSet::new();
+        let mut processed_hashes: AHashSet<String> = AHashSet::new();
         let mut files_to_organize: Vec<MediaFile> = Vec::new();
         let mut skipped_duplicates = 0;
         let files_total = files.len();
@@ -101,11 +110,12 @@ impl FileOrganizer {
         }
 
         // Now organize the filtered files
+        let mut operations = Vec::new();
         let mut moved_files = 0;
         let mut errors = Vec::new();
 
         for (idx, file) in files_to_organize.iter().enumerate() {
-            match self.organize_file(file, dest_folder, settings).await {
+            match self.organize_file(file, dest_folder, settings, &mut operations).await {
                 Ok(dest_path) => {
                     moved_files += 1;
                     tracing::info!("Organized {} to {}", file.name, dest_path.display());
@@ -123,6 +133,19 @@ impl FileOrganizer {
             }
         }
 
+        // Record the batch operation for undo (only if not dry run and operations were successful)
+        if !operations.is_empty() && settings.undo_enabled {
+            if let Err(e) = self.undo_manager.record_organize(operations).await {
+                error!("Failed to record undo operation: {}", e);
+            }
+        }
+
+        // Clear organizing flag
+        *self.is_organizing.lock().await = false;
+
+        // Store result
+        *self.result.lock().await = Some(Ok(moved_files));
+
         Ok(OrganizeResult {
             files_organized: moved_files,
             files_total,
@@ -134,7 +157,13 @@ impl FileOrganizer {
         })
     }
 
-    async fn organize_file(&self, file: &MediaFile, destination: &Path, settings: &Settings) -> Result<PathBuf> {
+    async fn organize_file(
+        &self,
+        file: &MediaFile,
+        destination: &Path,
+        settings: &Settings,
+        operations: &mut Vec<FileOperation>,
+    ) -> Result<PathBuf> {
         let target_dir = Self::determine_target_directory(file, destination, settings)?;
 
         // Create target directory if it doesn't exist
@@ -172,6 +201,11 @@ impl FileOrganizer {
 
         // Move the file
         fs::rename(&file.path, &target_path).await?;
+
+        operations.push(FileOperation::Move(MoveOperation {
+            source: file.path.clone(),
+            destination: target_path.clone(),
+        }));
 
         Ok(target_path)
     }
@@ -307,7 +341,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_file_organizer_creation() {
-        let organizer = FileOrganizer::new();
+        let config_dir = TempDir::new().expect("Failed to create temp dir").path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         assert!(organizer.is_complete().await);
         assert!(organizer.get_result().await.is_none());
     }
@@ -502,9 +537,11 @@ mod tests {
         );
 
         let settings = create_test_settings(dest_dir.clone());
-        let organizer = FileOrganizer::new();
-
-        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+        let result = organizer
+            .organize_file(&file, &dest_dir, &settings, &mut Vec::new())
+            .await?;
 
         // Check file was moved to correct location
         assert_eq!(result, dest_dir.join("2024").join("03-March").join("image.jpg"));
@@ -538,8 +575,11 @@ mod tests {
         let mut settings = create_test_settings(dest_dir.clone());
         settings.lowercase_extensions = true;
 
-        let organizer = FileOrganizer::new();
-        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+        let result = organizer
+            .organize_file(&file, &dest_dir, &settings, &mut Vec::new())
+            .await?;
 
         // Check file was renamed with lowercase extension
         assert_eq!(result, dest_dir.join("2024").join("03-March").join("IMAGE.jpg"));
@@ -577,8 +617,11 @@ mod tests {
         let mut settings = create_test_settings(dest_dir.clone());
         settings.rename_duplicates = true;
 
-        let organizer = FileOrganizer::new();
-        let result = organizer.organize_file(&file, &dest_dir, &settings).await?;
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+        let result = organizer
+            .organize_file(&file, &dest_dir, &settings, &mut Vec::new())
+            .await?;
 
         // Check file was renamed
         assert_eq!(result, target_dir.join("image (1).jpg"));
@@ -638,7 +681,10 @@ mod tests {
         let mut settings = create_test_settings(dest_dir.clone());
         settings.rename_duplicates = false;
 
-        let organizer = FileOrganizer::new();
+        // Ensure the organizer is initialized
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -698,7 +744,8 @@ mod tests {
         let mut settings = create_test_settings(dest_dir.clone());
         settings.rename_duplicates = true;
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -723,7 +770,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = TempDir::new()?.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -784,7 +832,8 @@ mod tests {
         }
 
         let settings = create_test_settings(dest_dir.clone());
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -867,7 +916,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -970,7 +1020,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -1036,7 +1087,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -1112,7 +1164,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -1200,7 +1253,8 @@ mod tests {
                 ..Default::default()
             };
 
-            let organizer = FileOrganizer::new();
+            let config_dir = temp_dir.path().to_path_buf();
+            let organizer = FileOrganizer::new(config_dir).await.unwrap();
             let progress = Arc::new(RwLock::new(Progress::default()));
 
             let result = organizer
@@ -1261,7 +1315,8 @@ mod tests {
             ..Default::default()
         };
 
-        let organizer = FileOrganizer::new();
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
@@ -1319,5 +1374,204 @@ mod tests {
         );
 
         assert_eq!(FileOrganizer::get_type_folder(&video_file), "Videos");
+    }
+
+    #[tokio::test]
+    #[allow(clippy::too_many_lines)]
+    async fn test_organize_records_move_operations() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create test files
+        let test_files = vec![
+            ("photo1.jpg", FileType::Image, "content1"),
+            ("photo2.png", FileType::Image, "content2"),
+            ("video1.mp4", FileType::Video, "content3"),
+            ("document.pdf", FileType::Document, "content4"),
+        ];
+
+        let mut files = Vec::new();
+        let modified = Local.with_ymd_and_hms(2024, 3, 15, 10, 0, 0).unwrap();
+
+        for (filename, file_type, content) in &test_files {
+            let file_path = source_dir.join(filename);
+            create_test_file(&file_path, content.as_bytes()).await?;
+
+            files.push(create_test_media_file(
+                file_path,
+                (*filename).to_string(),
+                file_type.clone(),
+                modified,
+                None,
+            ));
+        }
+
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "monthly".to_string(),
+            rename_duplicates: false,
+            separate_videos: true,
+            lowercase_extensions: false,
+            undo_enabled: true, // Enable undo to record operations
+            ..Default::default()
+        };
+
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        // Organize the files
+        let result = organizer
+            .organize_files_with_duplicates(files.clone(), AHashMap::new(), &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 4);
+        assert!(result.success);
+
+        // Get the undo history to verify operations were recorded
+        let history = organizer.undo_manager.get_history().await;
+
+        // Should have one batch operation
+        assert_eq!(history.len(), 1, "Should have recorded one batch operation");
+
+        let operation = &history[0];
+        assert!(!operation.undone, "Operation should not be marked as undone");
+        assert!(
+            operation.description.contains("Organized 4 files"),
+            "Description should mention organizing 4 files"
+        );
+
+        // Verify the operation type and contents
+        match &operation.operation {
+            crate::core::undo_manager::OperationType::OrganizeFiles { operations } => {
+                assert_eq!(operations.len(), 4, "Should have 4 file operations");
+
+                // Verify each move operation
+                for (i, op) in operations.iter().enumerate() {
+                    match op {
+                        FileOperation::Move(move_op) => {
+                            let (filename, file_type, _) = &test_files[i];
+
+                            // Verify source path
+                            assert_eq!(
+                                move_op.source,
+                                source_dir.join(filename),
+                                "Source path mismatch for {filename}"
+                            );
+
+                            // Verify destination path based on organization settings
+                            let expected_dest = if matches!(file_type, FileType::Video) && settings.separate_videos {
+                                dest_dir.join("Videos").join("2024").join("03-March").join(filename)
+                            } else {
+                                dest_dir.join("2024").join("03-March").join(filename)
+                            };
+
+                            assert_eq!(
+                                move_op.destination, expected_dest,
+                                "Destination path mismatch for {filename}"
+                            );
+                        }
+                        _ => panic!("Expected Move operation, got {op:?}"),
+                    }
+                }
+            }
+            _ => panic!("Expected OrganizeFiles operation, got {:?}", operation.operation),
+        }
+
+        // Test undo functionality - verify the operations can be undone
+        let undo_result = organizer.undo_manager.undo().await?;
+        assert!(undo_result.is_some(), "Undo should succeed");
+        assert!(undo_result.unwrap().contains("Undid organization of 4 files"));
+
+        // Verify files are back in their original locations
+        for (filename, _, _) in &test_files {
+            let source_path = source_dir.join(filename);
+            assert!(source_path.exists(), "File {filename} should be restored to source");
+
+            // Verify file is no longer in destination
+            let dest_path = if std::path::Path::new(filename)
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("mp4"))
+            {
+                dest_dir.join("Videos").join("2024").join("03-March").join(filename)
+            } else {
+                dest_dir.join("2024").join("03-March").join(filename)
+            };
+            assert!(
+                !dest_path.exists(),
+                "File {filename} should not be in destination after undo"
+            );
+        }
+
+        // Test redo functionality
+        let redo_result = organizer.undo_manager.redo().await?;
+        assert!(redo_result.is_some(), "Redo should succeed");
+
+        // Verify files are back in organized locations
+        for (filename, file_type, _) in &test_files {
+            let source_path = source_dir.join(filename);
+            assert!(
+                !source_path.exists(),
+                "File {filename} should not be in source after redo"
+            );
+
+            let dest_path = if matches!(file_type, FileType::Video) && settings.separate_videos {
+                dest_dir.join("Videos").join("2024").join("03-March").join(filename)
+            } else {
+                dest_dir.join("2024").join("03-March").join(filename)
+            };
+            assert!(
+                dest_path.exists(),
+                "File {filename} should be in destination after redo"
+            );
+        }
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_organize_no_operations_recorded_when_undo_disabled() -> Result<()> {
+        let temp_dir = TempDir::new()?;
+        let source_dir = temp_dir.path().join("source");
+        let dest_dir = temp_dir.path().join("dest");
+
+        fs::create_dir_all(&source_dir).await?;
+
+        // Create a test file
+        let file_path = source_dir.join("test.jpg");
+        create_test_file(&file_path, b"content").await?;
+
+        let file = create_test_media_file(file_path, "test.jpg".to_string(), FileType::Image, Local::now(), None);
+
+        let settings = Settings {
+            destination_folder: Some(dest_dir.clone()),
+            organize_by: "yearly".to_string(),
+            undo_enabled: false, // Disable undo
+            ..Default::default()
+        };
+
+        let config_dir = temp_dir.path().to_path_buf();
+        let organizer = FileOrganizer::new(config_dir).await.unwrap();
+        let progress = Arc::new(RwLock::new(Progress::default()));
+
+        // Organize the file
+        let result = organizer
+            .organize_files_with_duplicates(vec![file], AHashMap::new(), &settings, progress)
+            .await?;
+
+        assert_eq!(result.files_organized, 1);
+        assert!(result.success);
+
+        // Verify no operations were recorded
+        let history = organizer.undo_manager.get_history().await;
+        assert!(
+            history.is_empty(),
+            "No operations should be recorded when undo is disabled"
+        );
+
+        Ok(())
     }
 }

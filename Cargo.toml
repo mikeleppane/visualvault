@@ -1,6 +1,6 @@
 [package]
 name = "visualvault"
-version = "0.4.2"
+version = "0.6.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Mikko Leppänen <mleppan23@gmail.com>"]
@@ -39,6 +39,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 num_cpus = "1.17.0"
 rayon = "1.10.0"
 ahash = { version = "0.8", features = ["serde"] }
+uuid = { version = "1.17.0", features = ["v4", "serde"] }
+thiserror = "2.0.12"
 [target.'cfg(windows)'.dependencies]
 mimalloc = "0.1"
 

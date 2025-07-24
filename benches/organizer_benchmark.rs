@@ -53,9 +53,9 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
                     };
                     (temp_dir, files, settings)
                 },
-                |(_, files, settings)| {
+                |(temp_dir, files, settings)| {
                     rt.block_on(async {
-                        let organizer = FileOrganizer::new();
+                        let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
                         let progress = Arc::new(RwLock::new(Progress::default()));
 
                         organizer
@@ -93,9 +93,9 @@ fn benchmark_organize_modes(c: &mut Criterion) {
                     };
                     (temp_dir, files.clone(), settings)
                 },
-                |(_, files, settings)| {
+                |(temp_dir, files, settings)| {
                     rt.block_on(async {
-                        let organizer = FileOrganizer::new();
+                        let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
                         let progress = Arc::new(RwLock::new(Progress::default()));
 
                         organizer

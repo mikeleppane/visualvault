@@ -71,7 +71,7 @@ fn draw_header(f: &mut Frame, area: Rect, app: &App) {
         "╔═══════════════════════════════════════════════════════════════════╗",
         "║  🖼️  ╦  ╦╦╔═╗╦ ╦╔═╗╦    ╦  ╦╔═╗╦ ╦╦  ╔╦╗  🖼️                     ║",
         "║      ╚╗╔╝║╚═╗║ ║╠═╣║    ╚╗╔╝╠═╣║ ║║   ║                           ║",
-        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.4    ║",
+        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.6    ║",
         "╚═══════════════════════════════════════════════════════════════════╝",
     ];
 
@@ -319,7 +319,7 @@ fn draw_help_overlay(f: &mut Frame, app: &App) {
     let help_text = vec![
         Line::from(""),
         Line::from(vec![Span::styled(
-            "🖼️  VisualVault Help - Media Organizer v0.4",
+            "🖼️  VisualVault Help - Media Organizer v0.6",
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         )]),
         Line::from(""),
@@ -342,6 +342,8 @@ fn draw_help_overlay(f: &mut Frame, app: &App) {
         Line::from("  F             - Advanced filters (date, size, type, regex)"),
         Line::from("  u             - Update folder statistics"),
         Line::from("  D             - Duplicate detector and cleanup"),
+        Line::from("  Ctrl+Z        - Undo last operation (if enabled, see settings)"),
+        Line::from("  Ctrl+R        - Redo last undone operation (if enabled, see settings)"),
         Line::from(""),
         Line::from(vec![Span::styled(
             "🔄 Duplicate Management",
