@@ -1,23 +1,25 @@
 name: Benchmark
 # This workflow runs performance benchmarks on the VisualVault project.
 # It is triggered on pushes to main and develop branches, and on pull requests to main.
+# DISABLED: Uncomment the 'on' section below to re-enable
+#on:
+#  push:
+#    branches: [ main, develop ]
+#    paths:
+#      - 'src/**'
+#      - 'benches/**'
+#      - 'Cargo.toml'
+#      - 'Cargo.lock'
+#      - '.github/workflows/benchmark.yml'
+#  pull_request:
+#    branches: [ main ]
+#    paths:
+#      - 'src/**'
+#      - 'benches/**'
+#      - 'Cargo.toml'
+#      - 'Cargo.lock'
+#      - '.github/workflows/benchmark.yml'
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'src/**'
-      - 'benches/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/benchmark.yml'
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'src/**'
-      - 'benches/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/benchmark.yml'
   workflow_dispatch:
     inputs:
       benchmark_filter:

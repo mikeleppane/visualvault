@@ -5,6 +5,7 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_precision_loss)]
+#![allow(clippy::significant_drop_tightening)]
 use chrono::Local;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::{hint::black_box, path::PathBuf};

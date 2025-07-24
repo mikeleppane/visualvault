@@ -2,7 +2,7 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::float_cmp)] // For comparing floats in tests
 #![allow(clippy::panic)]
-
+#![allow(clippy::significant_drop_tightening)]
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::fs;
 use std::hint::black_box;
