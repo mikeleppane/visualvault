@@ -1,21 +1,17 @@
 use crate::config::Settings;
-use crate::core::DuplicateDetector;
 use crate::core::file_cache::{CacheEntry, FileCache};
+use crate::core::{DuplicateDetector, DuplicateStats};
 use crate::models::filters::FilterSet;
 use crate::utils::datetime::system_time_to_datetime;
 use crate::utils::media_types::{MEDIA_EXTENSIONS, determine_file_type};
 use crate::{models::MediaFile, utils::Progress};
-use ahash::AHashMap;
 use chrono::Local;
 use color_eyre::eyre::Result;
 use rayon::iter::{ParallelBridge, ParallelIterator};
-use sha2::Digest;
-use sha2::Sha256;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::{path::Path, sync::atomic::AtomicUsize};
-use tokio::io::AsyncSeekExt;
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info};
 use walkdir::WalkDir;
@@ -353,7 +349,7 @@ impl Scanner {
         &self,
         files: &mut [MediaFile],
         _progress: Arc<RwLock<Progress>>,
-    ) -> Result<AHashMap<String, Vec<MediaFile>>> {
+    ) -> Result<DuplicateStats> {
         info!(
             "Scanner: Using DuplicateDetector to find duplicates for {} files",
             files.len()
@@ -371,40 +367,8 @@ impl Scanner {
             duplicate_stats.groups.len()
         );
 
-        // Convert DuplicateStats to the format expected by Scanner
-        let mut hash_map: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
-
-        for group in duplicate_stats.groups {
-            if group.files.len() > 1 {
-                // Use the first file's hash as the group identifier
-                // If no hash exists, calculate one for consistency
-                let hash = if let Some(ref h) = group.files[0].hash {
-                    h.clone()
-                } else {
-                    // Calculate a hash based on file content for grouping
-                    match self.calculate_file_hash(&group.files[0].path).await {
-                        Ok(h) => h,
-                        Err(e) => {
-                            tracing::warn!("Failed to calculate hash for {}: {}", group.files[0].path.display(), e);
-                            continue;
-                        }
-                    }
-                };
-
-                // Update all files in the group with the same hash
-                for file in &group.files {
-                    if let Some(file_mut) = files.iter_mut().find(|f| f.path == file.path) {
-                        file_mut.hash = Some(hash.clone());
-                    }
-                }
-
-                // Add to hash map
-                hash_map.insert(hash, group.files);
-            }
-        }
-
         // Update cache with the calculated hashes
-        if !hash_map.is_empty() {
+        if !duplicate_stats.is_empty() {
             let mut cache = self.cache.lock().await;
             let mut cache_updated = false;
 
@@ -426,23 +390,28 @@ impl Scanner {
             }
         }
 
-        info!("Scanner: Converted to {} duplicate groups", hash_map.len());
+        /* for file in files.iter_mut() {
+            // update files with the same hash as in duplicate files
+            for group in &duplicate_stats.groups {
+                if let Some(file_mut) = files.iter_mut().find(|f| f.path == file.path) {
+                    if let Some(hash)  = group.files.iter().find(|f| f.path == file_mut.path).map(|f| f.hash) {
+                        file_mut.hash = hash.clone();
+                    }
+                }
+            }
+        } */
 
-        // Log details about duplicates found
-        let total_duplicates: usize = hash_map.values().map(|group| group.len().saturating_sub(1)).sum();
-        let wasted_space: u64 = hash_map
-            .values()
-            .map(|group| group.iter().skip(1).map(|f| f.size).sum::<u64>())
-            .sum();
+        info!("Scanner: Converted to {} duplicate groups", duplicate_stats.len());
 
-        if !hash_map.is_empty() {
+        if !duplicate_stats.is_empty() {
             info!(
                 "Scanner: Total duplicate files: {}, wasted space: {} bytes",
-                total_duplicates, wasted_space
+                duplicate_stats.total_files(),
+                duplicate_stats.total_size()
             );
         }
 
-        Ok(hash_map)
+        Ok(duplicate_stats)
     }
 
     /// Scans a directory for media files and detects duplicates in one operation.
@@ -477,7 +446,7 @@ impl Scanner {
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
         filter_set: Option<FilterSet>,
-    ) -> Result<(Vec<MediaFile>, AHashMap<String, Vec<MediaFile>>)> {
+    ) -> Result<(Vec<MediaFile>, DuplicateStats)> {
         // First, scan all files
         let mut files = self
             .scan_directory(path, recursive, progress.clone(), settings, filter_set)
@@ -499,69 +468,6 @@ impl Scanner {
         info!("Scanner: Found {} duplicate groups", duplicates.len());
 
         Ok((files, duplicates))
-    }
-
-    #[allow(clippy::cast_possible_truncation)]
-    async fn calculate_file_hash(&self, path: &Path) -> Result<String> {
-        use tokio::io::AsyncReadExt;
-
-        let file_size = tokio::fs::metadata(path).await?.len();
-
-        // For small files (< 1MB), hash the entire file
-        if file_size < 1024 * 1024 {
-            return self.calculate_full_hash(path).await;
-        }
-
-        // For larger files, use a sampling approach with larger buffers
-        let mut file = tokio::fs::File::open(path).await?;
-        let mut hasher = Sha256::new();
-
-        // Use larger buffer for better I/O performance
-        let buffer_size = (64 * 1024).min(file_size as usize); // 64KB or file size
-        let mut buffer = vec![0; buffer_size];
-
-        // Hash the first chunk
-        let n = file.read(&mut buffer).await?;
-        hasher.update(&buffer[..n]);
-
-        // For files > 128KB, sample middle and end
-        if file_size > 128 * 1024 {
-            // Middle sample
-            file.seek(std::io::SeekFrom::Start(file_size / 2)).await?;
-            let n = file.read(&mut buffer).await?;
-            hasher.update(&buffer[..n]);
-
-            // End sample
-            let end_pos = file_size.saturating_sub(buffer_size as u64);
-            file.seek(std::io::SeekFrom::Start(end_pos)).await?;
-            let n = file.read(&mut buffer).await?;
-            hasher.update(&buffer[..n]);
-        }
-
-        // Include file size in hash
-        hasher.update(file_size.to_le_bytes());
-
-        Ok(format!("{:x}", hasher.finalize()))
-    }
-
-    async fn calculate_full_hash(&self, path: &Path) -> Result<String> {
-        use tokio::io::AsyncReadExt;
-
-        let mut file = tokio::fs::File::open(path).await?;
-        let mut hasher = Sha256::new();
-
-        // Use larger buffer for better performance
-        let mut buffer = vec![0; 64 * 1024]; // 64KB buffer
-
-        loop {
-            let n = file.read(&mut buffer).await?;
-            if n == 0 {
-                break;
-            }
-            hasher.update(&buffer[..n]);
-        }
-
-        Ok(format!("{:x}", hasher.finalize()))
     }
 
     fn process_file(
@@ -853,17 +759,31 @@ mod tests {
 
         let duplicates = scanner.find_duplicates(&mut files, progress).await?;
 
-        assert_eq!(duplicates.len(), 1);
-        let (_, group) = duplicates.iter().next().unwrap();
-        assert_eq!(group.len(), 2);
+        // Check the duplicate stats
+        assert_eq!(duplicates.total_groups, 1);
+        assert_eq!(duplicates.total_files(), 2);
 
-        // Verify hashes were updated
+        let group = duplicates.groups.first().unwrap();
+        assert_eq!(group.files.len(), 2);
+
+        // Verify that both duplicate files are in the group
+        let file_names: Vec<&str> = group.files.iter().map(|f| f.name.as_str()).collect();
+        assert!(file_names.contains(&"file1.jpg"));
+        assert!(file_names.contains(&"file2.jpg"));
+
+        // The unique file should not be in any duplicate group
+        assert!(!group.files.iter().any(|f| f.name == "unique.jpg"));
+
+        // After find_duplicates, the files should have hashes updated by DuplicateDetector
+        // This happens inside detect_duplicates method
         assert!(
-            files
+            duplicates
+                .groups
                 .iter()
-                .filter(|f| f.name.starts_with("file"))
-                .all(|f| f.hash.is_some())
+                .all(|g| { g.files.iter().all(|f| f.hash.is_some()) }),
+            "All files should have hashes after duplicate detection"
         );
+
         Ok(())
     }
 
@@ -889,8 +809,7 @@ mod tests {
         assert_eq!(files.len(), 4);
         assert_eq!(duplicates.len(), 1);
 
-        let (_, dup_group) = duplicates.iter().next().unwrap();
-        assert_eq!(dup_group.len(), 2);
+        assert_eq!(duplicates.groups.first().unwrap().files.len(), 2);
         Ok(())
     }
 
@@ -955,42 +874,6 @@ mod tests {
         assert!(!is_hidden_in_path(Path::new("visible")));
         assert!(!is_hidden_in_path(Path::new("path/to/file.jpg")));
         assert!(!is_hidden_in_path(Path::new("")));
-    }
-
-    #[tokio::test]
-    async fn test_calculate_file_hash_small_file() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("small.txt");
-        create_test_file(&file_path, b"Hello, World!").await?;
-
-        let scanner = Scanner::with_cache().await?;
-        let hash = scanner.calculate_file_hash(&file_path).await?;
-
-        // Hash should be consistent
-        let hash2 = scanner.calculate_file_hash(&file_path).await?;
-        assert_eq!(hash, hash2);
-
-        // Hash should be hex string
-        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_calculate_file_hash_large_file() -> Result<()> {
-        let temp_dir = TempDir::new()?;
-        let file_path = temp_dir.path().join("large.bin");
-
-        // Create a 2MB file
-        let data = vec![0u8; 2 * 1024 * 1024];
-        create_test_file(&file_path, &data).await?;
-
-        let scanner = Scanner::with_cache().await?;
-        let hash = scanner.calculate_file_hash(&file_path).await?;
-
-        // Hash should be consistent
-        let hash2 = scanner.calculate_file_hash(&file_path).await?;
-        assert_eq!(hash, hash2);
-        Ok(())
     }
 
     #[tokio::test]

@@ -123,7 +123,7 @@ async fn test_duplicate_detection() -> Result<()> {
     assert!(!duplicates.is_empty(), "Should find duplicates");
 
     // Verify duplicate group
-    let duplicate_count: usize = duplicates.values().map(std::vec::Vec::len).sum();
+    let duplicate_count: usize = duplicates.total_files();
     assert_eq!(duplicate_count, 3, "Should find 3 files in duplicate groups");
 
     // Use DuplicateDetector directly

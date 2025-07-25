@@ -1,5 +1,3 @@
-use ahash::AHashMap;
-use ahash::AHashSet;
 use color_eyre::eyre::Result;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
@@ -10,6 +8,7 @@ use tracing::error;
 
 use crate::app::OrganizeResult;
 use crate::config::settings::OrganizationMode;
+use crate::core::DuplicateStats;
 use crate::core::UndoManager;
 use crate::core::undo_manager::FileOperation;
 use crate::core::undo_manager::MoveOperation;
@@ -55,8 +54,8 @@ impl FileOrganizer {
     /// - The organization mode in settings is invalid
     pub async fn organize_files_with_duplicates(
         &self,
-        files: Vec<MediaFile>,
-        duplicates: AHashMap<String, Vec<MediaFile>>,
+        mut files: Vec<MediaFile>,
+        duplicates: DuplicateStats,
         settings: &Settings,
         progress: Arc<RwLock<Progress>>,
     ) -> Result<OrganizeResult> {
@@ -66,33 +65,35 @@ impl FileOrganizer {
             .ok_or_else(|| color_eyre::eyre::eyre!("Destination folder not configured"))?;
 
         // Track which files have been processed to avoid duplicates
-        let mut processed_hashes: AHashSet<String> = AHashSet::new();
         let mut files_to_organize: Vec<MediaFile> = Vec::new();
         let mut skipped_duplicates = 0;
         let files_total = files.len();
 
         // If rename_duplicates is false, filter out duplicates
         if !settings.rename_duplicates && !duplicates.is_empty() {
-            for file in files {
-                if let Some(hash) = &file.hash {
-                    if let Some(duplicate_group) = duplicates.get(hash) {
-                        // This file is part of a duplicate group
-                        if processed_hashes.contains(hash) {
-                            // Already processed one file from this group, skip this one
-                            skipped_duplicates += 1;
-                            continue;
-                        }
-                        // First file from this group, process it
-                        processed_hashes.insert(hash.clone());
-                        // Choose the oldest file (by modified date) or first in list
-                        let chosen_file = duplicate_group.iter().min_by_key(|f| f.modified).unwrap_or(&file);
+            // First, process all duplicate groups - keep only the oldest file from each group
+            for group in &duplicates.groups {
+                if group.files.len() > 1 {
+                    // Choose the oldest file (by modified date) from the group
+                    if let Some(chosen_file) = group.files.iter().min_by_key(|f| f.modified) {
                         files_to_organize.push(chosen_file.clone());
-                    } else {
-                        // Not a duplicate, process normally
-                        files_to_organize.push(file);
+                        files.retain(|f| f != chosen_file);
+                        // Mark all other files in this group as skipped
+                        skipped_duplicates += group.files.len() - 1;
                     }
-                } else {
-                    // No hash, process normally
+                }
+            }
+
+            // Then, add all non-duplicate files
+            for file in files {
+                // Check if this file is part of any duplicate group
+                let is_duplicate = duplicates
+                    .groups
+                    .iter()
+                    .any(|group| group.files.iter().any(|dup_file| dup_file.path == file.path));
+
+                if !is_duplicate {
+                    // Not a duplicate, process normally
                     files_to_organize.push(file);
                 }
             }
@@ -289,6 +290,8 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+
+    use crate::core::DuplicateGroup;
 
     use super::*;
     use chrono::{DateTime, Local, TimeZone};
@@ -675,8 +678,26 @@ mod tests {
             ),
         ];
 
-        let mut duplicates = AHashMap::new();
-        duplicates.insert("hash1".to_string(), vec![files[0].clone(), files[1].clone()]);
+        let mut duplicates = DuplicateStats::new();
+        duplicates.groups = vec![DuplicateGroup::new(
+            vec![
+                create_test_media_file(
+                    file1_path.clone(),
+                    "image1.jpg".to_string(),
+                    FileType::Image,
+                    modified_old,
+                    Some("hash1".to_string()),
+                ),
+                create_test_media_file(
+                    file2_path.clone(),
+                    "image2.jpg".to_string(),
+                    FileType::Image,
+                    modified_new,
+                    Some("hash1".to_string()),
+                ),
+            ],
+            0, // Wasted space not used in this test
+        )];
 
         let mut settings = create_test_settings(dest_dir.clone());
         settings.rename_duplicates = false;
@@ -738,8 +759,26 @@ mod tests {
             ),
         ];
 
-        let mut duplicates = AHashMap::new();
-        duplicates.insert("hash1".to_string(), files.clone());
+        let mut duplicates = DuplicateStats::new();
+        duplicates.groups = vec![DuplicateGroup::new(
+            vec![
+                create_test_media_file(
+                    file1_path.clone(),
+                    "image1.jpg".to_string(),
+                    FileType::Image,
+                    modified,
+                    Some("hash1".to_string()),
+                ),
+                create_test_media_file(
+                    file2_path.clone(),
+                    "image2.jpg".to_string(),
+                    FileType::Image,
+                    modified,
+                    Some("hash1".to_string()),
+                ),
+            ],
+            0, // Wasted space not used in this test
+        )];
 
         let mut settings = create_test_settings(dest_dir.clone());
         settings.rename_duplicates = true;
@@ -775,7 +814,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(vec![], AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(vec![], DuplicateStats::new(), &settings, progress)
             .await;
 
         assert!(result.is_err());
@@ -837,7 +876,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress.clone())
+            .organize_files_with_duplicates(files, DuplicateStats::new(), &settings, progress.clone())
             .await?;
 
         let prog = progress.read().await;
@@ -921,7 +960,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(files, DuplicateStats::new(), &settings, progress)
             .await?;
 
         // Verify all files were organized
@@ -1025,7 +1064,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(files, DuplicateStats::new(), &settings, progress)
             .await?;
 
         assert_eq!(result.files_organized, 2);
@@ -1056,12 +1095,20 @@ mod tests {
         ];
 
         let mut files = Vec::new();
-        let mut duplicates = AHashMap::new();
-        let modified = Local::now();
+        let modified_old = Local.with_ymd_and_hms(2024, 1, 1, 10, 0, 0).unwrap();
+        let modified_new = Local.with_ymd_and_hms(2024, 1, 2, 10, 0, 0).unwrap();
 
+        // Create files with different modified times for duplicates
         for (filename, file_type, content, hash) in &files_data {
             let file_path = source_dir.join(filename);
             create_test_file(&file_path, content.as_bytes()).await?;
+
+            // Make first file of each duplicate pair older
+            let modified = if filename.ends_with("1.jpg") || filename.ends_with("1.pdf") {
+                modified_old
+            } else {
+                modified_new
+            };
 
             let file = create_test_media_file(
                 file_path,
@@ -1071,14 +1118,35 @@ mod tests {
                 Some((*hash).to_string()),
             );
 
-            files.push(file.clone());
-
-            // Add to duplicates map if hash already exists
-            duplicates
-                .entry((*hash).to_string())
-                .or_insert_with(Vec::new)
-                .push(file);
+            files.push(file);
         }
+
+        // Create proper duplicate groups
+        let mut duplicate_stats = DuplicateStats::new();
+
+        // Group 1: Two image files with same hash
+        duplicate_stats.groups.push(DuplicateGroup::new(
+            vec![
+                files[0].clone(), // image1.jpg
+                files[1].clone(), // image2.jpg
+            ],
+            files[0].size, // wasted space = size of one file
+        ));
+
+        // Group 2: Two document files with same hash
+        duplicate_stats.groups.push(DuplicateGroup::new(
+            vec![
+                files[2].clone(), // doc1.pdf
+                files[3].clone(), // doc2.pdf
+            ],
+            files[2].size, // wasted space = size of one file
+        ));
+
+        // Note: unique.mp3 is not in any duplicate group
+
+        duplicate_stats.total_groups = 2;
+        duplicate_stats.total_duplicates = 4; // Total files in duplicate groups
+        duplicate_stats.total_wasted_space = files[0].size + files[2].size;
 
         let settings = Settings {
             destination_folder: Some(dest_dir.clone()),
@@ -1092,7 +1160,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, duplicates, &settings, progress)
+            .organize_files_with_duplicates(files, duplicate_stats, &settings, progress)
             .await?;
 
         // Should organize 3 files (one from each duplicate group + unique)
@@ -1121,6 +1189,10 @@ mod tests {
 
         assert_eq!(images_count, 1); // Only one image from duplicate group
         assert_eq!(documents_count, 1); // Only one document from duplicate group
+
+        // Verify the oldest files were kept (those ending with "1")
+        assert!(dest_dir.join("Images").join("image1.jpg").exists());
+        assert!(dest_dir.join("Documents").join("doc1.pdf").exists());
 
         Ok(())
     }
@@ -1169,7 +1241,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(files, DuplicateStats::new(), &settings, progress)
             .await?;
 
         assert_eq!(result.files_organized, 4);
@@ -1258,7 +1330,7 @@ mod tests {
             let progress = Arc::new(RwLock::new(Progress::default()));
 
             let result = organizer
-                .organize_files_with_duplicates(files.clone(), AHashMap::new(), &settings, progress)
+                .organize_files_with_duplicates(files.clone(), DuplicateStats::new(), &settings, progress)
                 .await?;
             // print the actual paths for debugging
 
@@ -1320,7 +1392,7 @@ mod tests {
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let result = organizer
-            .organize_files_with_duplicates(files, AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(files, DuplicateStats::new(), &settings, progress)
             .await?;
 
         assert_eq!(result.files_organized, 3);
@@ -1425,7 +1497,7 @@ mod tests {
 
         // Organize the files
         let result = organizer
-            .organize_files_with_duplicates(files.clone(), AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(files.clone(), DuplicateStats::new(), &settings, progress)
             .await?;
 
         assert_eq!(result.files_organized, 4);
@@ -1559,7 +1631,7 @@ mod tests {
 
         // Organize the file
         let result = organizer
-            .organize_files_with_duplicates(vec![file], AHashMap::new(), &settings, progress)
+            .organize_files_with_duplicates(vec![file], DuplicateStats::new(), &settings, progress)
             .await?;
 
         assert_eq!(result.files_organized, 1);
