@@ -2,6 +2,7 @@ use ahash::AHashMap;
 use chrono::Datelike;
 use chrono::{DateTime, Local};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::core::DuplicateStats;
 use crate::models::{FileType, MediaFile};
@@ -28,7 +29,7 @@ impl Statistics {
         Self::default()
     }
 
-    pub fn update_from_files(&mut self, files: &[MediaFile]) {
+    pub fn update_from_files(&mut self, files: &[Arc<MediaFile>]) {
         // Reset statistics
         self.total_files = files.len();
         self.total_size = 0;
@@ -74,7 +75,7 @@ impl Statistics {
         self.most_recent_files = sorted_by_date.into_iter().take(10).collect();
     }
 
-    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &DuplicateStats) {
+    pub fn update_from_scan_results(&mut self, files: &[Arc<MediaFile>], duplicates: &DuplicateStats) {
         // Reset statistics
         self.total_files = files.len();
         self.total_size = files.iter().map(|f| f.size).sum();
@@ -120,12 +121,12 @@ mod tests {
     use chrono::{Local, TimeZone};
     use std::path::PathBuf;
 
-    fn create_test_media_file(path: &str, size: u64, file_type: FileType, modified: DateTime<Local>) -> MediaFile {
+    fn create_test_media_file(path: &str, size: u64, file_type: FileType, modified: DateTime<Local>) -> Arc<MediaFile> {
         let path_buf = PathBuf::from(path);
         let name = path_buf.file_name().unwrap().to_string_lossy().to_string();
         let extension = path_buf.extension().unwrap_or_default().to_string_lossy().to_string();
 
-        MediaFile {
+        Arc::new(MediaFile {
             path: path_buf,
             name,
             extension,
@@ -135,10 +136,10 @@ mod tests {
             modified,
             hash: None,
             metadata: None,
-        }
+        })
     }
 
-    fn create_test_files() -> Vec<MediaFile> {
+    fn create_test_files() -> Vec<Arc<MediaFile>> {
         vec![
             create_test_media_file(
                 "/test/image1.jpg",
@@ -335,7 +336,7 @@ mod tests {
     #[test]
     fn test_empty_files() {
         let mut stats = Statistics::new();
-        let files: Vec<MediaFile> = vec![];
+        let files: Vec<Arc<MediaFile>> = vec![];
 
         stats.update_from_files(&files);
 

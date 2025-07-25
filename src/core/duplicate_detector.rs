@@ -1,7 +1,9 @@
 use ahash::AHashMap;
 use color_eyre::Result;
 use sha2::{Digest, Sha256};
+use smallvec::SmallVec;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, BufReader};
 use tracing::{info, warn};
@@ -10,15 +12,18 @@ use crate::models::MediaFile;
 
 #[derive(Debug, Clone)]
 pub struct DuplicateGroup {
-    pub files: Vec<MediaFile>,
+    pub files: SmallVec<[Arc<MediaFile>; 4]>,
     pub wasted_space: u64, // Size that could be saved by keeping only one copy
 }
 
 impl DuplicateGroup {
     #[allow(dead_code)]
     #[must_use]
-    pub fn new(files: Vec<MediaFile>, wasted_space: u64) -> Self {
-        Self { files, wasted_space }
+    pub fn new(files: impl Into<SmallVec<[Arc<MediaFile>; 4]>>, wasted_space: u64) -> Self {
+        Self {
+            files: files.into(),
+            wasted_space,
+        }
     }
 }
 
@@ -80,9 +85,9 @@ impl DuplicateDetector {
     /// Calculate SHA256 hash of a file
     async fn calculate_file_hash(path: &Path) -> Result<String> {
         let file = File::open(path).await?;
-        let mut reader = BufReader::new(file);
+        let mut reader = BufReader::with_capacity(65536, file);
         let mut hasher = Sha256::new();
-        let mut buffer = vec![0; 8192];
+        let mut buffer = vec![0; 65536];
 
         loop {
             let bytes_read = reader.read(&mut buffer).await?;
@@ -128,13 +133,13 @@ impl DuplicateDetector {
     /// # Errors
     ///
     /// This function will return an error if file I/O operations fail while calculating hashes.
-    pub async fn detect_duplicates(&self, files: &[MediaFile], use_quick_hash: bool) -> Result<DuplicateStats> {
+    pub async fn detect_duplicates(&self, files: &[Arc<MediaFile>], use_quick_hash: bool) -> Result<DuplicateStats> {
         info!("Starting duplicate detection for {} files", files.len());
 
         // Group files by size first (fast pre-filter)
-        let mut size_groups: AHashMap<u64, Vec<&MediaFile>> = AHashMap::new();
+        let mut size_groups: AHashMap<u64, SmallVec<[Arc<MediaFile>; 8]>> = AHashMap::new();
         for file in files {
-            size_groups.entry(file.size).or_default().push(file);
+            size_groups.entry(file.size).or_default().push(Arc::clone(file));
         }
 
         // Only process groups with more than one file
@@ -146,7 +151,7 @@ impl DuplicateDetector {
         );
 
         // Calculate hashes for potential duplicates
-        let mut hash_groups: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
+        let mut hash_groups: AHashMap<String, SmallVec<[Arc<MediaFile>; 4]>> = AHashMap::new();
 
         for (size, group) in potential_duplicates {
             for file in group {
@@ -156,9 +161,11 @@ impl DuplicateDetector {
                     Self::calculate_file_hash(&file.path).await
                 } {
                     Ok(hash) => {
-                        let mut file = file.clone();
-                        file.hash = Some(hash.clone());
-                        hash_groups.entry(hash).or_default().push(file);
+                        // Create a new MediaFile with the hash set, and use that for grouping
+                        let mut mf = Arc::try_unwrap(file).unwrap_or_else(|arc| (*arc).clone());
+                        mf.hash = Some(hash.clone());
+                        let arc_mf = Arc::new(mf);
+                        hash_groups.entry(hash).or_default().push(arc_mf);
                     }
                     Err(e) => {
                         warn!("Failed to hash file {:?}: {}", file.path, e);
@@ -239,11 +246,11 @@ mod tests {
     use tokio::fs;
 
     // Helper function to create a test media file
-    fn create_test_media_file(path: PathBuf, size: u64, _content_id: u8) -> MediaFile {
+    fn create_test_media_file(path: PathBuf, size: u64, _content_id: u8) -> Arc<MediaFile> {
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         let extension = path.extension().unwrap_or_default().to_string_lossy().to_string();
 
-        MediaFile {
+        Arc::new(MediaFile {
             path,
             name,
             extension,
@@ -253,7 +260,7 @@ mod tests {
             modified: Local::now(),
             hash: None,
             metadata: None,
-        }
+        })
     }
 
     // Helper function to create a file with specific content

@@ -41,6 +41,7 @@ rayon = "1.10.0"
 ahash = { version = "0.8", features = ["serde"] }
 uuid = { version = "1.17.0", features = ["v4", "serde"] }
 thiserror = "2.0.12"
+smallvec = { version = "1.15.1", features = ["const_generics", "const_new", "serde", "write"] }
 [target.'cfg(windows)'.dependencies]
 mimalloc = "0.1"
 

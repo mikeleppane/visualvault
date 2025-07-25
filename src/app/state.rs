@@ -98,7 +98,7 @@ pub struct App {
     // Data
     pub statistics: Statistics,
     pub progress: Arc<RwLock<Progress>>,
-    pub cached_files: Vec<MediaFile>,
+    pub cached_files: Vec<Arc<MediaFile>>,
     pub search_results: Vec<MediaFile>,
     pub duplicate_groups: Option<Vec<Vec<MediaFile>>>,
     pub duplicate_stats: Option<DuplicateStats>,

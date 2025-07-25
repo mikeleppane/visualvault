@@ -426,7 +426,10 @@ impl App {
                                 match self.load_image_metadata(&path).await {
                                     Ok(metadata) => {
                                         if let Some(file) = self.cached_files.get_mut(self.selected_file_index) {
-                                            file.metadata = Some(metadata);
+                                            // Replace the Arc with a new Arc containing the updated MediaFile
+                                            let mut updated_file = (**file).clone();
+                                            updated_file.metadata = Some(metadata);
+                                            *file = std::sync::Arc::new(updated_file);
                                         }
                                         self.success_message = None;
                                     }

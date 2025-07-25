@@ -8,19 +8,19 @@
 #![allow(clippy::significant_drop_tightening)]
 use chrono::Local;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use std::{hint::black_box, path::PathBuf};
+use std::{hint::black_box, path::PathBuf, sync::Arc};
 use visualvault::{
     core::DuplicateDetector,
     models::{FileType, MediaFile},
 };
 
-fn create_test_files_with_duplicates(total: usize, duplicate_ratio: f32) -> Vec<MediaFile> {
+fn create_test_files_with_duplicates(total: usize, duplicate_ratio: f32) -> Vec<Arc<MediaFile>> {
     let unique_count = ((total as f32) * (1.0 - duplicate_ratio)) as usize;
     let mut files = Vec::with_capacity(total);
 
     // Create unique files
     for i in 0..unique_count {
-        files.push(MediaFile {
+        files.push(Arc::new(MediaFile {
             path: PathBuf::from(format!("/tmp/unique_{i:04}.jpg")),
             name: format!("unique_{i:04}.jpg"),
             extension: "jpg".to_string(),
@@ -30,16 +30,25 @@ fn create_test_files_with_duplicates(total: usize, duplicate_ratio: f32) -> Vec<
             created: Local::now(),
             metadata: None,
             hash: Some(format!("hash_{i:04}")),
-        });
+        }));
     }
 
     // Create duplicates
     let remaining = total - unique_count;
     for i in 0..remaining {
         let original_idx = i % unique_count;
-        let mut duplicate = files[original_idx].clone();
-        duplicate.path = PathBuf::from(format!("/tmp/duplicate_{i:04}.jpg"));
-        duplicate.name = format!("duplicate_{i:04}.jpg");
+        let original = &files[original_idx];
+        let duplicate = Arc::new(MediaFile {
+            path: PathBuf::from(format!("/tmp/duplicate_{i:04}.jpg")),
+            name: format!("duplicate_{i:04}.jpg"),
+            extension: original.extension.clone(),
+            file_type: original.file_type.clone(),
+            size: original.size,
+            modified: original.modified,
+            created: original.created,
+            metadata: original.metadata.clone(),
+            hash: original.hash.clone(),
+        });
         files.push(duplicate);
     }
 
