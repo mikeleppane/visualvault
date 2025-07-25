@@ -72,7 +72,13 @@ impl App {
                 self.duplicate_groups = if duplicates.is_empty() {
                     None
                 } else {
-                    Some(duplicates.groups.into_iter().map(|group| group.files).collect())
+                    Some(
+                        duplicates
+                            .groups
+                            .into_iter()
+                            .map(|group| group.files.iter().map(|arc| (**arc).clone()).collect())
+                            .collect(),
+                    )
                 };
 
                 self.last_scan_result = Some(ScanResult {

@@ -18,18 +18,20 @@ use visualvault::{
     models::{FileType, MediaFile},
 };
 
-fn create_test_media_files(count: usize) -> Vec<MediaFile> {
+fn create_test_media_files(count: usize) -> Vec<Arc<MediaFile>> {
     (0..count)
-        .map(|i| MediaFile {
-            path: PathBuf::from(format!("/tmp/test_{i:04}.jpg")),
-            name: format!("test_{i:04}.jpg"),
-            extension: "jpg".to_string(),
-            file_type: FileType::Image,
-            size: 1024 * 1024, // 1MB
-            modified: Local::now(),
-            created: Local::now(),
-            metadata: None,
-            hash: None,
+        .map(|i| {
+            Arc::new(MediaFile {
+                path: PathBuf::from(format!("/tmp/test_{i:04}.jpg")),
+                name: format!("test_{i:04}.jpg"),
+                extension: "jpg".to_string(),
+                file_type: FileType::Image,
+                size: 1024 * 1024, // 1MB
+                modified: Local::now(),
+                created: Local::now(),
+                metadata: None,
+                hash: None,
+            })
         })
         .collect()
 }

@@ -82,7 +82,7 @@ impl Scanner {
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
         filter_set: Option<FilterSet>,
-    ) -> Result<Vec<MediaFile>> {
+    ) -> Result<Vec<Arc<MediaFile>>> {
         info!("Scanner: Starting scan of {:?}", path);
 
         if !path.exists() {
@@ -197,8 +197,8 @@ impl Scanner {
         paths: &[PathBuf],
         progress: Arc<RwLock<Progress>>,
         filter_set: Option<FilterSet>,
-    ) -> Result<Vec<MediaFile>> {
-        let mut files = Vec::new();
+    ) -> Result<Vec<Arc<MediaFile>>> {
+        let mut files: Vec<Arc<MediaFile>> = Vec::new();
 
         for (idx, path) in paths.iter().enumerate() {
             match self.process_file_with_cache(path).await {
@@ -208,7 +208,7 @@ impl Scanner {
                             continue; // Skip files that don't match filters
                         }
                     }
-                    files.push(file);
+                    files.push(file.into());
 
                     let mut prog = progress.write().await;
                     prog.current = idx + 1;
@@ -229,7 +229,7 @@ impl Scanner {
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
         filter_set: Option<FilterSet>,
-    ) -> Result<Vec<MediaFile>> {
+    ) -> Result<Vec<Arc<MediaFile>>> {
         use tokio::task::JoinSet;
 
         info!("process_files_parallel: Starting with {} paths", paths.len());
@@ -237,7 +237,7 @@ impl Scanner {
         let mut join_set = JoinSet::new();
         let scanner = Arc::new(self.clone());
         let progress_counter = Arc::new(AtomicUsize::new(0));
-        let mut files = Vec::new();
+        let mut files: Vec<Arc<MediaFile>> = Vec::new();
 
         // Process files in chunks
         let chunk_size = settings.worker_threads * 10;
@@ -280,7 +280,7 @@ impl Scanner {
             // Wait for this chunk to complete before starting the next one
             while let Some(result) = join_set.join_next().await {
                 if let Ok(Some(file)) = result {
-                    files.push(file);
+                    files.push(file.into());
                 }
             }
         }
@@ -288,7 +288,7 @@ impl Scanner {
         // Make sure we collect any remaining results
         while let Some(result) = join_set.join_next().await {
             if let Ok(Some(file)) = result {
-                files.push(file);
+                files.push(file.into());
             }
         }
 
@@ -347,7 +347,7 @@ impl Scanner {
     /// - Cache operations fail when updating file hashes
     pub async fn find_duplicates(
         &self,
-        files: &mut [MediaFile],
+        files: &mut [Arc<MediaFile>],
         _progress: Arc<RwLock<Progress>>,
     ) -> Result<DuplicateStats> {
         info!(
@@ -376,7 +376,7 @@ impl Scanner {
                 if let Some(hash) = &file.hash {
                     if let Some(entry) = cache.get_mut(&file.path, file.size, &file.modified) {
                         if entry.hash.is_none() {
-                            entry.hash = Some(hash.clone());
+                            entry.hash = Some(hash.to_string());
                             cache_updated = true;
                         }
                     }
@@ -389,17 +389,6 @@ impl Scanner {
                 }
             }
         }
-
-        /* for file in files.iter_mut() {
-            // update files with the same hash as in duplicate files
-            for group in &duplicate_stats.groups {
-                if let Some(file_mut) = files.iter_mut().find(|f| f.path == file.path) {
-                    if let Some(hash)  = group.files.iter().find(|f| f.path == file_mut.path).map(|f| f.hash) {
-                        file_mut.hash = hash.clone();
-                    }
-                }
-            }
-        } */
 
         info!("Scanner: Converted to {} duplicate groups", duplicate_stats.len());
 
@@ -446,7 +435,7 @@ impl Scanner {
         progress: Arc<RwLock<Progress>>,
         settings: &Settings,
         filter_set: Option<FilterSet>,
-    ) -> Result<(Vec<MediaFile>, DuplicateStats)> {
+    ) -> Result<(Vec<Arc<MediaFile>>, DuplicateStats)> {
         // First, scan all files
         let mut files = self
             .scan_directory(path, recursive, progress.clone(), settings, filter_set)

@@ -54,7 +54,7 @@ impl FileOrganizer {
     /// - The organization mode in settings is invalid
     pub async fn organize_files_with_duplicates(
         &self,
-        mut files: Vec<MediaFile>,
+        files: Vec<Arc<MediaFile>>,
         duplicates: DuplicateStats,
         settings: &Settings,
         progress: Arc<RwLock<Progress>>,
@@ -65,7 +65,7 @@ impl FileOrganizer {
             .ok_or_else(|| color_eyre::eyre::eyre!("Destination folder not configured"))?;
 
         // Track which files have been processed to avoid duplicates
-        let mut files_to_organize: Vec<MediaFile> = Vec::new();
+        let mut files_to_organize: Vec<Arc<MediaFile>> = Vec::new();
         let mut skipped_duplicates = 0;
         let files_total = files.len();
 
@@ -76,8 +76,7 @@ impl FileOrganizer {
                 if group.files.len() > 1 {
                     // Choose the oldest file (by modified date) from the group
                     if let Some(chosen_file) = group.files.iter().min_by_key(|f| f.modified) {
-                        files_to_organize.push(chosen_file.clone());
-                        files.retain(|f| f != chosen_file);
+                        files_to_organize.push(Arc::clone(chosen_file));
                         // Mark all other files in this group as skipped
                         skipped_duplicates += group.files.len() - 1;
                     }
@@ -305,10 +304,10 @@ mod tests {
         file_type: FileType,
         modified: DateTime<Local>,
         hash: Option<String>,
-    ) -> MediaFile {
+    ) -> Arc<MediaFile> {
         let extension = path.extension().unwrap_or_default().to_string_lossy().to_string();
 
-        MediaFile {
+        Arc::new(MediaFile {
             path,
             name,
             extension,
@@ -318,7 +317,7 @@ mod tests {
             modified,
             hash,
             metadata: None,
-        }
+        })
     }
 
     // Helper function to create test settings

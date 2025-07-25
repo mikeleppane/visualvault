@@ -141,7 +141,7 @@ impl App {
                 file.name.to_lowercase().contains(&search_term)
                     || file.path.to_string_lossy().to_lowercase().contains(&search_term)
             })
-            .cloned()
+            .map(|file| (**file).clone())
             .collect();
         self.selected_file_index = 0;
         self.scroll_offset = 0;

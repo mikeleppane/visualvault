@@ -4,7 +4,7 @@ use crate::models::MediaFile;
 
 #[derive(Default)]
 pub struct FileManager {
-    files: Arc<Vec<MediaFile>>,
+    files: Arc<Vec<Arc<MediaFile>>>,
     // Remove filtered_files and filter_active for now
 }
 
@@ -16,12 +16,12 @@ impl FileManager {
         }
     }
 
-    pub fn set_files(&mut self, files: Vec<MediaFile>) {
+    pub fn set_files(&mut self, files: Vec<Arc<MediaFile>>) {
         self.files = Arc::new(files);
     }
 
     #[must_use]
-    pub fn get_files(&self) -> Arc<Vec<MediaFile>> {
+    pub fn get_files(&self) -> Arc<Vec<Arc<MediaFile>>> {
         Arc::clone(&self.files)
     }
 
@@ -44,8 +44,8 @@ mod tests {
     use chrono::Local;
     use std::path::PathBuf;
 
-    fn create_test_media_file(name: &str, size: u64) -> MediaFile {
-        MediaFile {
+    fn create_test_media_file(name: &str, size: u64) -> Arc<MediaFile> {
+        Arc::new(MediaFile {
             path: PathBuf::from(format!("/test/{name}")),
             name: name.to_string(),
             size,
@@ -55,7 +55,7 @@ mod tests {
             extension: "jpg".to_string(),
             hash: Some(format!("hash_{name}")),
             metadata: None,
-        }
+        })
     }
 
     #[test]
@@ -199,7 +199,7 @@ mod tests {
     #[allow(clippy::cast_sign_loss)]
     fn test_arc_cloning_efficiency() {
         let mut manager = FileManager::new();
-        let large_file_list: Vec<MediaFile> = (0..1000)
+        let large_file_list: Vec<Arc<MediaFile>> = (0..1000)
             .map(|i| create_test_media_file(&format!("file{i}.jpg"), i as u64 * 1000))
             .collect();
 
