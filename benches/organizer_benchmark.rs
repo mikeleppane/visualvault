@@ -3,7 +3,6 @@
 #![allow(clippy::float_cmp)] // For comparing floats in tests
 #![allow(clippy::panic)]
 #![allow(clippy::significant_drop_tightening)]
-use ahash::AHashMap;
 use chrono::Local;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::sync::Arc;
@@ -11,6 +10,7 @@ use std::{hint::black_box, path::PathBuf};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
+use visualvault::core::DuplicateStats;
 use visualvault::utils::Progress;
 use visualvault::{
     config::settings::Settings,
@@ -59,7 +59,12 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
                         let progress = Arc::new(RwLock::new(Progress::default()));
 
                         organizer
-                            .organize_files_with_duplicates(black_box(files), AHashMap::new(), &settings, progress)
+                            .organize_files_with_duplicates(
+                                black_box(files),
+                                DuplicateStats::new(),
+                                &settings,
+                                progress,
+                            )
                             .await
                             .unwrap()
                     })
@@ -99,7 +104,12 @@ fn benchmark_organize_modes(c: &mut Criterion) {
                         let progress = Arc::new(RwLock::new(Progress::default()));
 
                         organizer
-                            .organize_files_with_duplicates(black_box(files), AHashMap::new(), &settings, progress)
+                            .organize_files_with_duplicates(
+                                black_box(files),
+                                DuplicateStats::new(),
+                                &settings,
+                                progress,
+                            )
                             .await
                             .unwrap()
                     })

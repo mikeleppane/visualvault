@@ -134,7 +134,7 @@ async fn test_complete_system_workflow() -> Result<()> {
     assert!(videos > 0, "Should find video files");
 
     // Verify duplicates were detected correctly
-    let duplicate_group = duplicates.values().find(|group| group.len() >= 3);
+    let duplicate_group = duplicates.groups.iter().find(|group| group.files.len() >= 3);
     assert!(duplicate_group.is_some(), "Should find group with 3 duplicates");
 
     // 5. Organize files

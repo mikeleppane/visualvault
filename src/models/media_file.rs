@@ -22,7 +22,7 @@ impl fmt::Display for FileType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MediaFile {
     pub path: PathBuf,
     pub name: String,
@@ -35,13 +35,13 @@ pub struct MediaFile {
     pub metadata: Option<MediaMetadata>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MediaMetadata {
     Image(ImageMetadata),
     Video(VideoMetadata),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ImageMetadata {
     pub width: u32,
     pub height: u32,
@@ -49,7 +49,7 @@ pub struct ImageMetadata {
     pub color_type: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct VideoMetadata {
     pub duration_seconds: f64,
     pub width: u32,

@@ -3,6 +3,7 @@ use chrono::Datelike;
 use chrono::{DateTime, Local};
 use std::path::PathBuf;
 
+use crate::core::DuplicateStats;
 use crate::models::{FileType, MediaFile};
 
 #[derive(Debug, Clone, Default)]
@@ -73,34 +74,32 @@ impl Statistics {
         self.most_recent_files = sorted_by_date.into_iter().take(10).collect();
     }
 
-    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &AHashMap<String, Vec<MediaFile>>) {
+    pub fn update_from_scan_results(&mut self, files: &[MediaFile], duplicates: &DuplicateStats) {
         // Reset statistics
         self.total_files = files.len();
         self.total_size = files.iter().map(|f| f.size).sum();
-        self.duplicate_count = 0;
-        self.duplicate_size = 0;
         self.file_types.clear();
         self.media_types.clear();
         self.type_sizes.clear();
+
+        // Count duplicates and calculate duplicate size
+        for group in &duplicates.groups {
+            if group.files.len() > 1 {
+                // Count all duplicates except one (the one we'd keep)
+                self.duplicate_count += group.files.len() - 1;
+
+                // Calculate size of duplicates (excluding one copy)
+                if let Some(file_size) = group.files.first().map(|f| f.size) {
+                    self.duplicate_size += file_size * (group.files.len() - 1) as u64;
+                }
+            }
+        }
 
         // Count file types
         for file in files {
             *self.file_types.entry(file.file_type.clone()).or_insert(0) += 1;
             *self.media_types.entry(file.file_type.to_string()).or_insert(0) += 1;
             *self.type_sizes.entry(file.file_type.to_string()).or_insert(0) += file.size;
-        }
-
-        // Count duplicates and calculate duplicate size
-        for group in duplicates.values() {
-            if group.len() > 1 {
-                // Count all duplicates except one (the one we'd keep)
-                self.duplicate_count += group.len() - 1;
-
-                // Calculate size of duplicates (excluding one copy)
-                if let Some(file_size) = group.first().map(|f| f.size) {
-                    self.duplicate_size += file_size * (group.len() - 1) as u64;
-                }
-            }
         }
     }
 }
@@ -114,7 +113,10 @@ mod tests {
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
     use super::*;
-    use crate::models::{FileType, MediaFile};
+    use crate::{
+        core::DuplicateGroup,
+        models::{FileType, MediaFile},
+    };
     use chrono::{Local, TimeZone};
     use std::path::PathBuf;
 
@@ -278,7 +280,7 @@ mod tests {
     fn test_update_from_scan_results_no_duplicates() {
         let mut stats = Statistics::new();
         let files = create_test_files();
-        let duplicates: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
+        let duplicates = DuplicateStats::new(); // No duplicates
 
         stats.update_from_scan_results(&files, &duplicates);
 
@@ -299,27 +301,27 @@ mod tests {
         let files = create_test_files();
 
         // Create duplicate groups
-        let mut duplicates: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
+        let mut duplicates = DuplicateStats::new();
 
         // Group 1: 3 identical 5MB images
         let duplicate_image =
             create_test_media_file("/test/dup_image.jpg", 1024 * 1024 * 5, FileType::Image, Local::now());
-        duplicates.insert(
-            "hash1".to_string(),
+        duplicates.groups.push(DuplicateGroup::new(
             vec![
                 duplicate_image.clone(),
                 duplicate_image.clone(),
                 duplicate_image.clone(),
             ],
-        );
+            1024 * 1024 * 10, // 10MB wasted space
+        ));
 
         // Group 2: 2 identical 10MB videos
         let duplicate_video =
             create_test_media_file("/test/dup_video.mp4", 1024 * 1024 * 10, FileType::Video, Local::now());
-        duplicates.insert(
-            "hash2".to_string(),
+        duplicates.groups.push(DuplicateGroup::new(
             vec![duplicate_video.clone(), duplicate_video.clone()],
-        );
+            1024 * 1024 * 10, // 10MB wasted space
+        ));
 
         stats.update_from_scan_results(&files, &duplicates);
 
@@ -427,21 +429,21 @@ mod tests {
     fn test_duplicate_groups_edge_cases() {
         let mut stats = Statistics::new();
         let files = vec![];
-        let mut duplicates: AHashMap<String, Vec<MediaFile>> = AHashMap::new();
+        let mut duplicates: DuplicateStats = DuplicateStats::new();
 
         // Group with only 1 file (not a duplicate)
-        duplicates.insert(
-            "hash1".to_string(),
+        duplicates.groups.push(DuplicateGroup::new(
             vec![create_test_media_file(
                 "/test/single.jpg",
                 1024,
                 FileType::Image,
                 Local::now(),
             )],
-        );
+            0, // No wasted space since it's a single file
+        ));
 
         // Empty group (edge case)
-        duplicates.insert("hash2".to_string(), vec![]);
+        duplicates.groups.push(DuplicateGroup::new(vec![], 0));
 
         stats.update_from_scan_results(&files, &duplicates);
 

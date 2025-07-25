@@ -1,4 +1,3 @@
-use ahash::AHashMap;
 use chrono::Local;
 use color_eyre::eyre::Result;
 use std::path::Path;
@@ -7,6 +6,7 @@ use tracing::{error, info};
 use walkdir::WalkDir;
 
 use crate::{
+    core::DuplicateStats,
     models::{ImageMetadata, MediaMetadata},
     utils::FolderStats,
 };
@@ -57,14 +57,10 @@ impl App {
                 info!("Scanner returned {} duplicate groups", duplicates.len());
 
                 let files_found = files.len();
-                let duplicate_count = duplicates
-                    .values()
-                    .map(|group| group.len().saturating_sub(1))
-                    .sum::<usize>();
 
                 info!(
                     "Scan complete: {} files found, {} duplicates",
-                    files_found, duplicate_count
+                    files_found, duplicates.total_duplicates
                 );
 
                 self.statistics.update_from_scan_results(&files, &duplicates);
@@ -76,7 +72,7 @@ impl App {
                 self.duplicate_groups = if duplicates.is_empty() {
                     None
                 } else {
-                    Some(duplicates.into_values().collect())
+                    Some(duplicates.groups.into_iter().map(|group| group.files).collect())
                 };
 
                 self.last_scan_result = Some(ScanResult {
@@ -85,6 +81,7 @@ impl App {
                     timestamp: Local::now(),
                 });
 
+                let duplicate_count = duplicates.total_duplicates;
                 self.success_message = if duplicate_count > 0 {
                     Some(format!(
                         "Scan complete: {files_found} files found ({duplicate_count} duplicates)"
@@ -138,7 +135,7 @@ impl App {
         let files_total = files.len();
 
         let duplicates = if settings.rename_duplicates {
-            AHashMap::new()
+            DuplicateStats::new()
         } else {
             scanner.find_duplicates(&mut files, progress.clone()).await?
         };
