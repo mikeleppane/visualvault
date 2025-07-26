@@ -1,0 +1,20 @@
+[package]
+name = "visualvault-ui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+visualvault-models = { workspace = true }
+visualvault-utils = { workspace = true }
+visualvault-app = { workspace = true }
+visualvault-config = { workspace = true }
+ahash = { workspace = true }
+color-eyre = { workspace = true }
+chrono = { workspace = true }
+num_cpus = { workspace = true }
+dirs = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tracing = { workspace = true }

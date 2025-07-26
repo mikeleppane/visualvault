@@ -4,10 +4,12 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::fs;
 use tokio::sync::RwLock;
-use visualvault::config::Settings;
-use visualvault::core::{DuplicateDetector, Scanner};
-use visualvault::models::FileType;
-use visualvault::utils::Progress;
+
+use visualvault_config::Settings;
+use visualvault_core::{DuplicateDetector, Scanner};
+use visualvault_models::FileType;
+use visualvault_utils::Progress;
+
 /// Create a test file with specific content and size
 async fn create_test_file(path: &Path, content: &[u8], size: usize) -> Result<()> {
     if let Some(parent) = path.parent() {

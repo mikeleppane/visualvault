@@ -10,13 +10,10 @@ use std::{hint::black_box, path::PathBuf};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use visualvault::core::DuplicateStats;
-use visualvault::utils::Progress;
-use visualvault::{
-    config::settings::Settings,
-    core::FileOrganizer,
-    models::{FileType, MediaFile},
-};
+use visualvault_config::Settings;
+use visualvault_core::FileOrganizer;
+use visualvault_models::{DuplicateStats, FileType, MediaFile};
+use visualvault_utils::Progress;
 
 fn create_test_media_files(count: usize) -> Vec<Arc<MediaFile>> {
     (0..count)

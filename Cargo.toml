@@ -1,6 +1,16 @@
-[package]
-name = "visualvault"
-version = "0.6.3"
+[workspace]
+members = [
+    "crates/app",
+    "crates/config",
+    "crates/core",
+    "crates/models",
+    "crates/ui",
+    "crates/utils",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.6.4"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Mikko Leppänen <mleppan23@gmail.com>"]
@@ -19,8 +29,14 @@ keywords = [
 ]
 categories = ["command-line-utilities", "filesystem"]
 
-[dependencies]
-tokio = { version = "1.38", features = ["full"] }
+[workspace.dependencies]
+visualvault-app = { path = "crates/app" }
+visualvault-config = { path = "crates/config" }
+visualvault-core = { path = "crates/core" }
+visualvault-models = { path = "crates/models" }
+visualvault-ui = { path = "crates/ui" }
+visualvault-utils = { path = "crates/utils" }
+tokio = { version = "1.47.0", features = ["full"] }
 ratatui = "0.29.0"
 crossterm = "0.29.0"
 color-eyre = "0.6"
@@ -47,35 +63,69 @@ smallvec = { version = "1.15.1", features = [
     "serde",
     "write",
 ] }
-[target.'cfg(windows)'.dependencies]
-mimalloc = "0.1"
+clap = { version = "4.5", features = ["derive", "color"] }
 
-[target.'cfg(not(windows))'.dependencies]
-jemallocator = "0.5"
+[package]
+name = "visualvault"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "visualvault"
+path = "src/main.rs"
+bench = false
+
+[dependencies]
+visualvault-app = { workspace = true }
+visualvault-config = { workspace = true }
+visualvault-core = { workspace = true }
+visualvault-models = { workspace = true }
+visualvault-ui = { workspace = true }
+visualvault-utils = { workspace = true }
+clap = { workspace = true }
+color-eyre = { workspace = true }
+crossterm = { workspace = true }
+ratatui = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 [dev-dependencies]
+dirs = { workspace = true }
 tempfile = "3.20"
+# Conditional dependencies for allocatorstempfile = "3.20"
 serde_json = "1.0"
 tokio = { version = "1", features = ["full", "test-util"] }
 color-eyre = "0.6"
 chrono = "0.4"
 criterion = { version = "3.0.4", package = "codspeed-criterion-compat" }
 proptest = "1.7"
+[target.'cfg(windows)'.dependencies]
+mimalloc = "0.1"
 
-[[test]]
-name = "integration"
-path = "tests/integration_tests.rs"
+[target.'cfg(not(windows))'.dependencies]
+jemallocator = "0.5"
 
-[[test]]
-name = "system"
-path = "tests/system_tests.rs"
+[profile.release]
+lto = true
+codegen-units = 1
+opt-level = 3
+strip = true
 
-[[bench]]
-name = "scanner_benchmark"
-harness = false
+[profile.dev]
+opt-level = 0
+
+[profile.dev.package."*"]
+opt-level = 3
 
 [[bench]]
 name = "organizer_benchmark"
+harness = false
+
+[[bench]]
+name = "scanner_benchmark"
 harness = false
 
 [[bench]]
@@ -83,9 +133,4 @@ name = "duplicate_benchmark"
 harness = false
 
 [lib]
-bench = false
-
-[[bin]]
-name = "visualvault"
-path = "src/main.rs"
 bench = false
