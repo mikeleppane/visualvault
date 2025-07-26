@@ -1,0 +1,32 @@
+[package]
+name = "visualvault-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+visualvault-models = { workspace = true }
+visualvault-utils = { workspace = true }
+visualvault-config = { workspace = true }
+ahash = { workspace = true }
+color-eyre = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+smallvec = { workspace = true }
+sha2 = { workspace = true }
+chrono = { workspace = true }
+dirs = { workspace = true }
+walkdir = { workspace = true }
+rayon = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.20"
+serde_json = "1.0"
+tokio = { version = "1", features = ["full", "test-util"] }
+color-eyre = "0.6"
+chrono = "0.4"

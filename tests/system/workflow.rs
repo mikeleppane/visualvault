@@ -6,13 +6,10 @@ use color_eyre::Result;
 use std::path::Path;
 use tempfile::TempDir;
 use tokio::fs;
-
-use visualvault::{
-    config::Settings,
-    core::{DuplicateDetector, FileOrganizer, Scanner},
-    models::FileType,
-    utils::Progress,
-};
+use visualvault_config::Settings;
+use visualvault_core::{DuplicateDetector, FileOrganizer, Scanner};
+use visualvault_models::FileType;
+use visualvault_utils::Progress;
 
 use std::sync::Arc;
 use tokio::sync::RwLock;

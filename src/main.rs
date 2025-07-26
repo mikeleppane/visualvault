@@ -16,13 +16,8 @@ use std::{
 use tokio::sync::RwLock;
 use tracing::{error, info};
 
-mod app;
-mod config;
-mod core;
-mod models;
-mod ui;
-mod utils;
-use app::App;
+use visualvault_app::App;
+use visualvault_ui::draw;
 
 #[cfg(windows)]
 use mimalloc::MiMalloc;
@@ -131,7 +126,7 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: Arc<RwLock<App>>) 
         // Draw UI
         {
             let mut app = app.write().await;
-            terminal.draw(|f| ui::draw(f, &mut app))?;
+            terminal.draw(|f| draw(f, &mut app))?;
         }
 
         // Handle events with timeout

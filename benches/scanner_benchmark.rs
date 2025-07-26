@@ -11,9 +11,9 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
-use visualvault::config::settings::Settings;
-use visualvault::core::Scanner;
-use visualvault::utils::Progress;
+use visualvault_config::Settings;
+use visualvault_core::Scanner;
+use visualvault_utils::Progress;
 
 fn create_test_files(dir: &Path, count: usize) {
     for i in 0..count {

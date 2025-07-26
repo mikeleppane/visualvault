@@ -1,0 +1,14 @@
+[package]
+name = "visualvault-models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+chrono = { workspace = true }
+serde = { workspace = true }
+smallvec = { workspace = true }
+ahash = { workspace = true }
+regex = { workspace = true }
+serde_json = { workspace = true }
