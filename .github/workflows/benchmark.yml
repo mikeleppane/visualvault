@@ -19,18 +19,9 @@ name: Benchmark
 #      - 'Cargo.toml'
 #      - 'Cargo.lock'
 #      - '.github/workflows/benchmark.yml'
+
 on:
   workflow_dispatch:
-    inputs:
-      benchmark_filter:
-        description: 'Specific benchmark to run (leave empty for all)'
-        required: false
-        type: string
-      comparison_branch:
-        description: 'Branch to compare against'
-        required: false
-        default: 'main'
-        type: string
 
 env:
   CARGO_TERM_COLOR: always

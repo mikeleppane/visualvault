@@ -1,9 +1,7 @@
 name: Dependencies
 
+
 on:
-  schedule:
-    # Run every Monday at 8am UTC
-    - cron: '0 8 * * 1'
   workflow_dispatch:
 
 jobs:
