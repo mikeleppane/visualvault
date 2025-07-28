@@ -89,6 +89,7 @@ MD033:
     - "p"
     - "i"
     - "input"
+    - "span"
 
 # MD034/no-bare-urls - Bare URL used
 MD034: true

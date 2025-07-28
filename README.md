@@ -5,9 +5,36 @@ A modern, terminal-based media file organizer built with Rust
 
 ![CI](https://github.com/mikeleppane/visualvault/workflows/CI/badge.svg)
 [![codecov](https://codecov.io/gh/mikeleppane/visualvault/branch/main/graph/badge.svg)](https://codecov.io/gh/mikeleppane/visualvault)
-<img alt="Status" src="https://img.shields.io/badge/Status-Work in Progress-yellow">
+[![CodSpeed Badge](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/CodSpeedHQ/codspeed-rust)
+
 <img alt="Rust" src="https://img.shields.io/badge/Rust-1.85-orange">
 <img alt="License" src="https://img.shields.io/badge/License-MIT-blue">
+
+## 📸 Screenshots
+
+<p align="center">
+  <img src="images/main-page.png" alt="VisualVault's Main Page" />
+  <span>VisualVault's Main Page</span>
+</p>
+
+<p align="center">
+  <img src="images/settings-page.png" alt="VisualVault's Settings Page" />
+  <span>VisualVault's Settings Page</span>
+</p>
+
+
+<p align="center">
+  <img src="images/duplicate-detector-page.png" alt="VisualVault's Duplicate Detector Page" />
+  <span>VisualVault's Duplicate Detector Page</span>
+</p>
+</p>
+
+
+<p align="center">
+  <img src="images/filters-page.png" alt="VisualVault's Filters Page" />
+  <span>VisualVault's Filters Page</span>
+</p>
+
 
 ## 🎥 Introduction Videos
 
@@ -29,12 +56,6 @@ A modern, terminal-based media file organizer built with Rust
 
 <p align="center">
   <i>Click the image above to see VisualVault's Undo/Redo operation in action</i>
-</p>
-
-## 📸 Screenshot
-
-<p align="center">
-  <img src="images/screenshot.png" alt="VisualVault Screenshot" />
 </p>
 
 ## ✨ Features
