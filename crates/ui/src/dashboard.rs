@@ -476,7 +476,7 @@ fn draw_files_list(f: &mut Frame, area: Rect, app: &App) {
             };
 
             Row::new(vec![
-                Cell::from(file.name.clone()),
+                Cell::from(file.name.to_string()),
                 Cell::from(file.file_type.to_string())
                     .style(Style::default().fg(get_type_color(&file.file_type.to_string()))),
                 Cell::from(format_bytes(file.size)),

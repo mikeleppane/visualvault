@@ -156,7 +156,7 @@ impl App {
         }
     }
 
-    fn switch_to_group_list(&mut self) {
+    const fn switch_to_group_list(&mut self) {
         self.duplicate_focus = DuplicateFocus::GroupList;
         self.selected_file_in_group = 0;
     }

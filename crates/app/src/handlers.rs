@@ -89,7 +89,7 @@ impl App {
     ///
     /// This function currently does not return any errors, but returns a `Result`
     /// for consistency with other key handling methods.
-    pub fn handle_file_details_keys(&mut self, key: KeyEvent) {
+    pub const fn handle_file_details_keys(&mut self, key: KeyEvent) {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') => {
                 self.state = AppState::Dashboard;

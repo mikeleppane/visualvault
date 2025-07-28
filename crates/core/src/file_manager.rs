@@ -4,7 +4,7 @@ use visualvault_models::MediaFile;
 
 #[derive(Default)]
 pub struct FileManager {
-    files: Arc<Vec<Arc<MediaFile>>>,
+    files: Arc<[Arc<MediaFile>]>,
     // Remove filtered_files and filter_active for now
 }
 
@@ -12,16 +12,16 @@ impl FileManager {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            files: Arc::new(Vec::new()),
+            files: Arc::<[Arc<MediaFile>]>::from([]),
         }
     }
 
     pub fn set_files(&mut self, files: Vec<Arc<MediaFile>>) {
-        self.files = Arc::new(files);
+        self.files = Arc::from(files);
     }
 
     #[must_use]
-    pub fn get_files(&self) -> Arc<Vec<Arc<MediaFile>>> {
+    pub fn get_files(&self) -> Arc<[Arc<MediaFile>]> {
         Arc::clone(&self.files)
     }
 
@@ -47,13 +47,13 @@ mod tests {
     fn create_test_media_file(name: &str, size: u64) -> Arc<MediaFile> {
         Arc::new(MediaFile {
             path: PathBuf::from(format!("/test/{name}")),
-            name: name.to_string(),
+            name: name.to_string().into(),
             size,
             modified: Local::now(),
             created: Local::now(),
             file_type: FileType::Image,
-            extension: "jpg".to_string(),
-            hash: Some(format!("hash_{name}")),
+            extension: "jpg".to_string().into(),
+            hash: Some(format!("hash_{name}").into()),
             metadata: None,
         })
     }
@@ -90,9 +90,9 @@ mod tests {
         // Verify files are the same
         let retrieved_files = manager.get_files();
         assert_eq!(retrieved_files.len(), 3);
-        assert_eq!(retrieved_files[0].name, "file1.jpg");
-        assert_eq!(retrieved_files[1].name, "file2.jpg");
-        assert_eq!(retrieved_files[2].name, "file3.jpg");
+        assert_eq!(retrieved_files[0].name, "file1.jpg".into());
+        assert_eq!(retrieved_files[1].name, "file2.jpg".into());
+        assert_eq!(retrieved_files[2].name, "file3.jpg".into());
     }
 
     #[test]
@@ -118,9 +118,9 @@ mod tests {
         assert_eq!(manager.get_file_count(), 3);
 
         let retrieved_files = manager.get_files();
-        assert_eq!(retrieved_files[0].name, "new1.jpg");
-        assert_eq!(retrieved_files[1].name, "new2.jpg");
-        assert_eq!(retrieved_files[2].name, "new3.jpg");
+        assert_eq!(retrieved_files[0].name, "new1.jpg".into());
+        assert_eq!(retrieved_files[1].name, "new2.jpg".into());
+        assert_eq!(retrieved_files[2].name, "new3.jpg".into());
     }
 
     #[test]

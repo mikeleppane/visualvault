@@ -12,6 +12,12 @@ use visualvault_utils::Progress;
 use crate::UndoManager;
 use crate::undo_manager::{FileOperation, MoveOperation};
 
+struct OrganizeBatchResult {
+    operations: Vec<FileOperation>,
+    moved_files: usize,
+    errors: Vec<String>,
+}
+
 pub struct FileOrganizer {
     is_organizing: Arc<Mutex<bool>>,
     result: Arc<Mutex<Option<Result<usize>>>>,
@@ -34,7 +40,7 @@ impl FileOrganizer {
 
     /// Get a reference to the undo manager
     #[must_use]
-    pub fn undo_manager(&self) -> &Arc<UndoManager> {
+    pub const fn undo_manager(&self) -> &Arc<UndoManager> {
         &self.undo_manager
     }
 
@@ -46,7 +52,6 @@ impl FileOrganizer {
     /// - The destination folder is not configured in settings
     /// - File system operations fail (creating directories, moving files)
     /// - The organization mode in settings is invalid
-    #[allow(clippy::cognitive_complexity)]
     pub async fn organize_files_with_duplicates(
         &self,
         files: Vec<Arc<MediaFile>>,
@@ -54,83 +59,167 @@ impl FileOrganizer {
         settings: &Settings,
         progress: Arc<RwLock<Progress>>,
     ) -> Result<OrganizeResult> {
-        let dest_folder = settings
+        let dest_folder = Self::validate_destination(settings)?;
+
+        let (files_to_organize, skipped_duplicates) =
+            Self::filter_files_for_organization(files.clone(), &duplicates, settings);
+
+        self.initialize_progress(&progress, files_to_organize.len()).await;
+
+        let organize_result = self
+            .organize_files_batch(files_to_organize, &dest_folder, settings, &progress)
+            .await?;
+
+        self.finalize_organization(organize_result, files.len(), dest_folder, skipped_duplicates, settings)
+            .await
+    }
+
+    /// Validates that a destination folder is configured
+    fn validate_destination(settings: &Settings) -> Result<PathBuf> {
+        settings
             .destination_folder
-            .as_ref()
-            .ok_or_else(|| color_eyre::eyre::eyre!("Destination folder not configured"))?;
+            .clone()
+            .ok_or_else(|| color_eyre::eyre::eyre!("Destination folder not configured"))
+    }
 
-        // Track which files have been processed to avoid duplicates
-        let mut files_to_organize: Vec<Arc<MediaFile>> = Vec::new();
+    /// Filters files based on duplicate handling settings
+    fn filter_files_for_organization(
+        files: Vec<Arc<MediaFile>>,
+        duplicates: &DuplicateStats,
+        settings: &Settings,
+    ) -> (Vec<Arc<MediaFile>>, usize) {
+        if settings.rename_duplicates || duplicates.is_empty() {
+            return (files, 0);
+        }
+
+        let mut files_to_organize = Vec::new();
         let mut skipped_duplicates = 0;
-        let files_total = files.len();
 
-        // If rename_duplicates is false, filter out duplicates
-        if !settings.rename_duplicates && !duplicates.is_empty() {
-            // First, process all duplicate groups - keep only the oldest file from each group
-            for group in &duplicates.groups {
-                if group.files.len() > 1 {
-                    // Choose the oldest file (by modified date) from the group
-                    if let Some(chosen_file) = group.files.iter().min_by_key(|f| f.modified) {
-                        files_to_organize.push(Arc::clone(chosen_file));
-                        // Mark all other files in this group as skipped
-                        skipped_duplicates += group.files.len() - 1;
-                    }
+        // Process duplicate groups - keep only the oldest file from each group
+        let processed_duplicates = Self::process_duplicate_groups(duplicates, &mut skipped_duplicates);
+        files_to_organize.extend(processed_duplicates);
+
+        // Add non-duplicate files
+        let non_duplicates = Self::filter_non_duplicate_files(&files, duplicates);
+        files_to_organize.extend(non_duplicates);
+
+        (files_to_organize, skipped_duplicates)
+    }
+
+    /// Processes duplicate groups and returns the files to keep
+    fn process_duplicate_groups(duplicates: &DuplicateStats, skipped_count: &mut usize) -> Vec<Arc<MediaFile>> {
+        let mut files_to_keep = Vec::new();
+
+        for group in &duplicates.groups {
+            if group.files.len() > 1 {
+                if let Some(oldest_file) = group.files.iter().min_by_key(|f| f.modified) {
+                    files_to_keep.push(Arc::clone(oldest_file));
+                    *skipped_count += group.files.len() - 1;
                 }
             }
-
-            // Then, add all non-duplicate files
-            for file in files {
-                // Check if this file is part of any duplicate group
-                let is_duplicate = duplicates
-                    .groups
-                    .iter()
-                    .any(|group| group.files.iter().any(|dup_file| dup_file.path == file.path));
-
-                if !is_duplicate {
-                    // Not a duplicate, process normally
-                    files_to_organize.push(file);
-                }
-            }
-        } else {
-            // If rename_duplicates is true, organize all files
-            files_to_organize = files;
         }
 
-        // Update progress
-        {
-            let mut prog = progress.write().await;
-            prog.total = files_to_organize.len();
-            prog.current = 0;
-            prog.message = "Organizing files...".to_string();
-        }
+        files_to_keep
+    }
 
-        // Now organize the filtered files
+    /// Filters out files that are part of duplicate groups
+    fn filter_non_duplicate_files(all_files: &[Arc<MediaFile>], duplicates: &DuplicateStats) -> Vec<Arc<MediaFile>> {
+        all_files
+            .iter()
+            .filter(|file| !Self::is_file_in_duplicate_groups(file, duplicates))
+            .cloned()
+            .collect()
+    }
+
+    /// Checks if a file is part of any duplicate group
+    fn is_file_in_duplicate_groups(file: &Arc<MediaFile>, duplicates: &DuplicateStats) -> bool {
+        duplicates
+            .groups
+            .iter()
+            .any(|group| group.files.iter().any(|dup_file| dup_file.path == file.path))
+    }
+
+    /// Initializes progress tracking
+    async fn initialize_progress(&self, progress: &Arc<RwLock<Progress>>, total_files: usize) {
+        let mut prog = progress.write().await;
+        prog.total = total_files;
+        prog.current = 0;
+        prog.message = "Organizing files...".to_string();
+    }
+
+    /// Organizes a batch of files
+    async fn organize_files_batch(
+        &self,
+        files: Vec<Arc<MediaFile>>,
+        destination: &Path,
+        settings: &Settings,
+        progress: &Arc<RwLock<Progress>>,
+    ) -> Result<OrganizeBatchResult> {
         let mut operations = Vec::new();
         let mut moved_files = 0;
         let mut errors = Vec::new();
 
-        for (idx, file) in files_to_organize.iter().enumerate() {
-            match self.organize_file(file, dest_folder, settings, &mut operations).await {
-                Ok(dest_path) => {
-                    moved_files += 1;
-                    tracing::info!("Organized {} to {}", file.name, dest_path.display());
-                }
-                Err(e) => {
-                    tracing::error!("Failed to organize {}: {}", file.name, e);
-                    errors.push(format!("{}: {}", file.name, e));
-                }
-            }
+        for (idx, file) in files.iter().enumerate() {
+            self.organize_single_file(
+                file,
+                destination,
+                settings,
+                &mut operations,
+                &mut moved_files,
+                &mut errors,
+            )
+            .await;
 
-            // Update progress
-            {
-                let mut prog = progress.write().await;
-                prog.current = idx + 1;
-            }
+            self.update_progress(progress, idx + 1).await;
         }
 
-        // Record the batch operation for undo (only if not dry run and operations were successful)
-        if !operations.is_empty() && settings.undo_enabled {
-            if let Err(e) = self.undo_manager.record_organize(operations).await {
+        Ok(OrganizeBatchResult {
+            operations,
+            moved_files,
+            errors,
+        })
+    }
+
+    /// Organizes a single file
+    async fn organize_single_file(
+        &self,
+        file: &Arc<MediaFile>,
+        destination: &Path,
+        settings: &Settings,
+        operations: &mut Vec<FileOperation>,
+        moved_count: &mut usize,
+        errors: &mut Vec<String>,
+    ) {
+        match self.organize_file(file, destination, settings, operations).await {
+            Ok(dest_path) => {
+                *moved_count += 1;
+                tracing::info!("Organized {} to {}", file.name, dest_path.display());
+            }
+            Err(e) => {
+                tracing::error!("Failed to organize {}: {}", file.name, e);
+                errors.push(format!("{}: {}", file.name, e));
+            }
+        }
+    }
+
+    /// Updates progress tracking
+    async fn update_progress(&self, progress: &Arc<RwLock<Progress>>, current: usize) {
+        let mut prog = progress.write().await;
+        prog.current = current;
+    }
+
+    /// Finalizes the organization process
+    async fn finalize_organization(
+        &self,
+        batch_result: OrganizeBatchResult,
+        total_files: usize,
+        destination: PathBuf,
+        skipped_duplicates: usize,
+        settings: &Settings,
+    ) -> Result<OrganizeResult> {
+        // Record operations for undo if enabled
+        if !batch_result.operations.is_empty() && settings.undo_enabled {
+            if let Err(e) = self.undo_manager.record_organize(batch_result.operations).await {
                 error!("Failed to record undo operation: {}", e);
             }
         }
@@ -139,16 +228,16 @@ impl FileOrganizer {
         *self.is_organizing.lock().await = false;
 
         // Store result
-        *self.result.lock().await = Some(Ok(moved_files));
+        *self.result.lock().await = Some(Ok(batch_result.moved_files));
 
         Ok(OrganizeResult {
-            files_organized: moved_files,
-            files_total,
-            destination: dest_folder.clone(),
-            success: errors.is_empty(),
+            files_organized: batch_result.moved_files,
+            files_total: total_files,
+            destination,
+            success: batch_result.errors.is_empty(),
             timestamp: chrono::Local::now(),
             skipped_duplicates,
-            errors,
+            errors: batch_result.errors,
         })
     }
 
@@ -167,10 +256,10 @@ impl FileOrganizer {
         // Handle file naming
         let file_name = if settings.rename_duplicates {
             // Check if file exists in target directory
-            if target_dir.join(&file.name).exists() {
+            if target_dir.join(&*file.name).exists() {
                 &Self::generate_unique_name(&target_dir, &file.name)?
             } else {
-                &file.name
+                &*file.name
             }
         } else {
             &file.name
@@ -284,6 +373,9 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::panic_in_result_fn)]
 
     use super::*;
     use crate::undo_manager::OperationType::OrganizeFiles;
@@ -304,13 +396,13 @@ mod tests {
 
         Arc::new(MediaFile {
             path,
-            name,
-            extension,
+            name: name.into(),
+            extension: extension.into(),
             file_type,
             size: 1024,
             created: modified,
             modified,
-            hash,
+            hash: hash.map(std::convert::Into::into),
             metadata: None,
         })
     }

@@ -636,12 +636,13 @@ impl UndoManager {
     async fn save_history(&self) -> Result<()> {
         let history_file = self.config_dir.join("visualvault").join(UNDO_HISTORY_FILE);
         if !history_file.exists() {
-            fs::create_dir_all(history_file.parent().unwrap_or_else(|| {
-                panic!(
-                    "SAVE HISTORY FAILURE: could not create path {}",
-                    history_file.parent().unwrap().display()
-                )
-            }))?;
+            let parent = history_file.parent().ok_or_else(|| VisualVaultError::UndoError {
+                message: format!(
+                    "SAVE HISTORY FAILURE: could not get parent path for {}",
+                    history_file.display()
+                ),
+            })?;
+            fs::create_dir_all(parent)?;
             fs::File::create(&history_file)?;
         }
         let history: Vec<UndoableOperation> = self.history.read().await.iter().cloned().collect();
@@ -680,6 +681,10 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::panic_in_result_fn)]
+
     use super::*;
     use tempfile::TempDir;
     use tokio::fs;

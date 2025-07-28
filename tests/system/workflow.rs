@@ -2,6 +2,10 @@
 #![allow(clippy::expect_used)]
 #![allow(clippy::float_cmp)] // For comparing floats in tests
 #![allow(clippy::panic)]
+#![allow(clippy::unwrap_used)]
+#![allow(clippy::expect_used)]
+#![allow(clippy::panic_in_result_fn)]
+
 use color_eyre::Result;
 use std::path::Path;
 use tempfile::TempDir;

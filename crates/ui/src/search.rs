@@ -134,7 +134,7 @@ fn draw_search_results(f: &mut Frame, area: Rect, app: &App) {
         .take(area.height.saturating_sub(4) as usize)
         .map(|file| {
             Row::new(vec![
-                Cell::from(file.name.clone()),
+                Cell::from(&*file.name),
                 Cell::from(file.file_type.to_string()).style(Style::default().fg(get_type_color(&file.file_type))),
                 Cell::from(format_bytes(file.size)),
                 Cell::from(file.modified.format("%Y-%m-%d").to_string()),
@@ -185,7 +185,7 @@ fn draw_search_status(f: &mut Frame, area: Rect, app: &App) {
     f.render_widget(status, area);
 }
 
-fn get_type_color(file_type: &FileType) -> Color {
+const fn get_type_color(file_type: &FileType) -> Color {
     match file_type {
         FileType::Image => Color::Green,
         FileType::Video => Color::Blue,

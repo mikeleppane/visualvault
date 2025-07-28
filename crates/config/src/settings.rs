@@ -46,35 +46,35 @@ pub struct Settings {
 }
 
 // Default value functions for serde
-fn default_recurse_subfolders() -> bool {
+const fn default_recurse_subfolders() -> bool {
     true
 }
 fn default_organize_by() -> String {
     "monthly".to_string()
 }
-fn default_rename_duplicates() -> bool {
+const fn default_rename_duplicates() -> bool {
     true
 }
-fn default_lowercase_extensions() -> bool {
+const fn default_lowercase_extensions() -> bool {
     true
 }
-fn default_preserve_metadata() -> bool {
+const fn default_preserve_metadata() -> bool {
     true
 }
 fn default_worker_threads() -> usize {
     num_cpus::get()
 }
-fn default_buffer_size() -> usize {
+const fn default_buffer_size() -> usize {
     8 * 1024 * 1024
 }
-fn default_enable_cache() -> bool {
+const fn default_enable_cache() -> bool {
     true
 }
-fn default_parallel_processing() -> bool {
+const fn default_parallel_processing() -> bool {
     true
 }
 
-fn default_undo_enabled() -> bool {
+const fn default_undo_enabled() -> bool {
     true
 }
 

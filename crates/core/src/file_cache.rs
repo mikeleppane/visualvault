@@ -2,7 +2,10 @@ use ahash::AHashMap;
 use chrono::{DateTime, Local};
 use color_eyre::eyre::Result;
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use visualvault_models::{FileType, MediaFile, MediaMetadata};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -147,11 +150,11 @@ impl From<&MediaFile> for CacheEntry {
     fn from(file: &MediaFile) -> Self {
         Self {
             path: file.path.clone(),
-            name: file.name.clone(),
-            extension: file.extension.clone(),
+            name: file.name.to_string(),
+            extension: file.extension.to_string(),
             size: file.size,
             modified: file.modified,
-            hash: file.hash.clone(),
+            hash: file.hash.as_ref().map(std::string::ToString::to_string),
             metadata: file.metadata.clone(),
         }
     }
@@ -161,13 +164,13 @@ impl CacheEntry {
     pub fn to_media_file(&self, file_type: FileType, created: DateTime<Local>) -> MediaFile {
         MediaFile {
             path: self.path.clone(),
-            name: self.name.clone(),
-            extension: self.extension.clone(),
+            name: Arc::from(self.name.as_str()),
+            extension: Arc::from(self.extension.as_str()),
             file_type,
             size: self.size,
             created,
             modified: self.modified,
-            hash: self.hash.clone(),
+            hash: self.hash.as_ref().map(|s| Arc::from(s.as_str())),
             metadata: self.metadata.clone(),
         }
     }
@@ -179,6 +182,10 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::panic_in_result_fn)]
+
     use super::*;
     use chrono::TimeZone;
     use tempfile::TempDir;
@@ -204,17 +211,23 @@ mod tests {
     fn create_test_media_file(path: &str, size: u64, modified: DateTime<Local>) -> MediaFile {
         MediaFile {
             path: PathBuf::from(path),
-            name: PathBuf::from(path).file_name().unwrap().to_string_lossy().to_string(),
+            name: PathBuf::from(path)
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string()
+                .into(),
             extension: PathBuf::from(path)
                 .extension()
                 .unwrap_or_default()
                 .to_string_lossy()
-                .to_string(),
+                .to_string()
+                .into(),
             file_type: FileType::Image,
             size,
             created: modified,
             modified,
-            hash: Some("test_hash".to_string()),
+            hash: Some("test_hash".to_string().into()),
             metadata: None,
         }
     }
@@ -286,11 +299,14 @@ mod tests {
         let cache_entry = CacheEntry::from(&media_file);
 
         assert_eq!(cache_entry.path, media_file.path);
-        assert_eq!(cache_entry.name, media_file.name);
-        assert_eq!(cache_entry.extension, media_file.extension);
+        assert_eq!(cache_entry.name, media_file.name.as_ref());
+        assert_eq!(cache_entry.extension, media_file.extension.as_ref());
         assert_eq!(cache_entry.size, media_file.size);
         assert_eq!(cache_entry.modified, media_file.modified);
-        assert_eq!(cache_entry.hash, media_file.hash);
+        assert_eq!(
+            cache_entry.hash,
+            media_file.hash.as_ref().map(std::string::ToString::to_string)
+        );
     }
 
     #[test]
@@ -311,13 +327,16 @@ mod tests {
         let media_file = cache_entry.to_media_file(FileType::Video, created);
 
         assert_eq!(media_file.path, cache_entry.path);
-        assert_eq!(media_file.name, cache_entry.name);
-        assert_eq!(media_file.extension, cache_entry.extension);
+        assert_eq!(media_file.name, cache_entry.name.into());
+        assert_eq!(media_file.extension, cache_entry.extension.into());
         assert_eq!(media_file.file_type, FileType::Video);
         assert_eq!(media_file.size, cache_entry.size);
         assert_eq!(media_file.created, created);
         assert_eq!(media_file.modified, cache_entry.modified);
-        assert_eq!(media_file.hash, cache_entry.hash);
+        assert_eq!(
+            media_file.hash,
+            cache_entry.hash.as_ref().map(|s| Arc::from(s.as_str()))
+        );
     }
 
     #[tokio::test]
@@ -469,7 +488,7 @@ mod tests {
         };
 
         let media_file = entry.to_media_file(FileType::Document, Local::now());
-        assert_eq!(media_file.extension, "");
-        assert_eq!(media_file.name, "README");
+        assert_eq!(media_file.extension, "".into());
+        assert_eq!(media_file.name, "README".into());
     }
 }

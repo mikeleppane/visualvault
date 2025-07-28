@@ -22,14 +22,14 @@ fn create_test_files_with_duplicates(total: usize, duplicate_ratio: f32) -> Vec<
     for i in 0..unique_count {
         files.push(Arc::new(MediaFile {
             path: PathBuf::from(format!("/tmp/unique_{i:04}.jpg")),
-            name: format!("unique_{i:04}.jpg"),
-            extension: "jpg".to_string(),
+            name: Arc::from(format!("unique_{i:04}.jpg")),
+            extension: Arc::from("jpg"),
             file_type: FileType::Image,
             size: 1024 * 1024, // 1MB
             modified: Local::now(),
             created: Local::now(),
             metadata: None,
-            hash: Some(format!("hash_{i:04}")),
+            hash: Some(Arc::from(format!("hash_{i:04}"))),
         }));
     }
 
@@ -40,7 +40,7 @@ fn create_test_files_with_duplicates(total: usize, duplicate_ratio: f32) -> Vec<
         let original = &files[original_idx];
         let duplicate = Arc::new(MediaFile {
             path: PathBuf::from(format!("/tmp/duplicate_{i:04}.jpg")),
-            name: format!("duplicate_{i:04}.jpg"),
+            name: Arc::from(format!("duplicate_{i:04}.jpg")),
             extension: original.extension.clone(),
             file_type: original.file_type.clone(),
             size: original.size,

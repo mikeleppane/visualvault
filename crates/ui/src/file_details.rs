@@ -50,7 +50,7 @@ pub fn draw_modal(f: &mut Frame, file: &MediaFile) {
     let title = Paragraph::new(vec![Line::from(vec![
         Span::raw(format!("{icon} ")),
         Span::styled(
-            &file.name,
+            &*file.name,
             Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
         ),
     ])])
