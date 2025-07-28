@@ -2,7 +2,7 @@ use crate::MediaFile;
 use chrono::{DateTime, Local};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{fmt, sync::Arc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilterSet {
@@ -123,86 +123,96 @@ impl FilterSet {
     }
 
     #[must_use]
-    #[allow(clippy::cognitive_complexity)]
     pub fn matches_file(&self, file: &MediaFile) -> bool {
         if !self.is_active {
             return true;
         }
 
-        // Check date ranges
-        if !self.date_ranges.is_empty() {
-            let file_date = file.modified;
-            let matches_date = self.date_ranges.iter().any(|range| {
-                let after_from = range.from.is_none_or(|from| file_date >= from);
-                let before_to = range.to.is_none_or(|to| file_date <= to);
-                after_from && before_to
-            });
-            if !matches_date {
-                return false;
-            }
+        self.matches_date(file)
+            && self.matches_size(file)
+            && self.matches_media_type(file)
+            && self.matches_regex_patterns(file)
+    }
+
+    fn matches_date(&self, file: &MediaFile) -> bool {
+        if self.date_ranges.is_empty() {
+            return true;
         }
 
-        // Check size ranges
-        if !self.size_ranges.is_empty() {
-            let matches_size = self.size_ranges.iter().any(|range| {
-                let above_min = range.min_bytes.is_none_or(|min| file.size >= min);
-                let below_max = range.max_bytes.is_none_or(|max| file.size <= max);
-                above_min && below_max
-            });
-            if !matches_size {
-                return false;
-            }
+        let file_date = file.modified;
+        self.date_ranges.iter().any(|range| {
+            let after_from = range.from.is_none_or(|from| file_date >= from);
+            let before_to = range.to.is_none_or(|to| file_date <= to);
+            after_from && before_to
+        })
+    }
+
+    fn matches_size(&self, file: &MediaFile) -> bool {
+        if self.size_ranges.is_empty() {
+            return true;
         }
 
-        // Check media types
+        self.size_ranges.iter().any(|range| {
+            let above_min = range.min_bytes.is_none_or(|min| file.size >= min);
+            let below_max = range.max_bytes.is_none_or(|max| file.size <= max);
+            above_min && below_max
+        })
+    }
+
+    fn matches_media_type(&self, file: &MediaFile) -> bool {
         let enabled_types: Vec<_> = self.media_types.iter().filter(|mt| mt.enabled).collect();
-        if !enabled_types.is_empty() {
-            let file_ext = file
-                .path
-                .extension()
-                .and_then(|ext| ext.to_str())
-                .unwrap_or("")
-                .to_lowercase();
 
-            let matches_type = enabled_types
-                .iter()
-                .any(|mt| mt.extensions.iter().any(|ext| ext.to_lowercase() == file_ext));
-            if !matches_type {
-                return false;
-            }
+        if enabled_types.is_empty() {
+            return true;
         }
 
-        // Check regex patterns
-        for pattern in &self.regex_patterns {
-            if !pattern.enabled {
-                continue;
-            }
+        let file_ext = Self::get_file_extension(file);
 
-            let regex_result = if pattern.case_sensitive {
-                Regex::new(&pattern.pattern)
-            } else {
-                // For case-insensitive matching, add the (?i) flag to the pattern
-                Regex::new(&format!("(?i){}", pattern.pattern))
-            };
+        enabled_types
+            .iter()
+            .any(|mt| mt.extensions.iter().any(|ext| ext.to_lowercase() == file_ext))
+    }
 
-            let Ok(regex) = regex_result else {
-                continue;
-            };
+    fn get_file_extension(file: &MediaFile) -> String {
+        file.path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("")
+            .to_lowercase()
+    }
 
-            let text = match pattern.target {
-                RegexTarget::FileName => file.name.as_str(),
-                RegexTarget::FilePath => file.path.to_str().unwrap_or(""),
-                RegexTarget::Extension => file.path.extension().and_then(|ext| ext.to_str()).unwrap_or(""),
-            };
+    fn matches_regex_patterns(&self, file: &MediaFile) -> bool {
+        self.regex_patterns
+            .iter()
+            .filter(|pattern| pattern.enabled)
+            .all(|pattern| Self::matches_single_regex(pattern, file))
+    }
 
-            let matches = regex.is_match(text);
+    fn matches_single_regex(pattern: &RegexPattern, file: &MediaFile) -> bool {
+        let regex_result = Self::build_regex(pattern);
 
-            if !matches {
-                return false;
-            }
+        let Ok(regex) = regex_result else {
+            return true; // Skip invalid regex patterns
+        };
+
+        let text = Self::get_regex_target_text(pattern, file);
+        regex.is_match(&text)
+    }
+
+    fn build_regex(pattern: &RegexPattern) -> Result<Regex, regex::Error> {
+        if pattern.case_sensitive {
+            Regex::new(&pattern.pattern)
+        } else {
+            Regex::new(&format!("(?i){}", pattern.pattern))
         }
+    }
 
-        true
+    fn get_regex_target_text(pattern: &RegexPattern, file: &MediaFile) -> Arc<str> {
+        match pattern.target {
+            RegexTarget::FileName => Arc::clone(&file.name),
+            RegexTarget::FilePath => file.path.to_str().unwrap_or("").into(),
+            RegexTarget::Extension => file.path.extension().and_then(|ext| ext.to_str()).unwrap_or("").into(),
+        }
     }
 
     pub fn clear_all(&mut self) {
@@ -295,8 +305,8 @@ mod tests {
     fn create_test_media_file() -> MediaFile {
         MediaFile {
             path: PathBuf::from("/test/path/image.jpg"),
-            name: "image.jpg".to_string(),
-            extension: "jpg".to_string(),
+            name: "image.jpg".into(),
+            extension: "jpg".into(),
             file_type: crate::FileType::Image,
             size: 1024 * 1024 * 5, // 5MB
             created: Local::now(),
@@ -417,11 +427,11 @@ mod tests {
 
         // Change file to video
         file.path = PathBuf::from("/test/video.mp4");
-        file.extension = "mp4".to_string();
+        file.extension = "mp4".into();
         assert!(filter_set.matches_file(&file));
 
         // Test case-insensitive extension matching
-        file.extension = "MP4".to_string();
+        file.extension = "MP4".into();
         assert!(filter_set.matches_file(&file));
     }
 
@@ -607,7 +617,7 @@ mod tests {
 
         let mut file = create_test_media_file();
         file.path = PathBuf::from("/test/noextension");
-        file.extension = String::new();
+        file.extension = "".into();
 
         // Should not match any media type filter when extension is empty
         assert!(!filter_set.matches_file(&file));
@@ -642,7 +652,7 @@ mod tests {
 
         // Test file with no extension
         file.path = PathBuf::from("/test/noextension");
-        file.extension = String::new();
+        file.extension = String::new().into();
 
         // Should not match any media type filter
         assert!(!filter_set.matches_file(&file));

@@ -2,6 +2,7 @@ use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, Hash, PartialEq)]
 pub enum FileType {
@@ -25,13 +26,13 @@ impl fmt::Display for FileType {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MediaFile {
     pub path: PathBuf,
-    pub name: String,
-    pub extension: String,
+    pub name: Arc<str>,
+    pub extension: Arc<str>,
     pub file_type: FileType,
     pub size: u64,
     pub created: DateTime<Local>,
     pub modified: DateTime<Local>,
-    pub hash: Option<String>,
+    pub hash: Option<Arc<str>>,
     pub metadata: Option<MediaMetadata>,
 }
 
@@ -72,18 +73,18 @@ mod tests {
     fn create_test_media_file() -> MediaFile {
         MediaFile {
             path: PathBuf::from("/test/path/image.jpg"),
-            name: "image.jpg".to_string(),
-            extension: "jpg".to_string(),
+            name: "image.jpg".into(),
+            extension: "jpg".into(),
             file_type: FileType::Image,
             size: 1024 * 1024 * 5, // 5MB
             created: Local.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap(),
             modified: Local.with_ymd_and_hms(2024, 1, 20, 14, 45, 0).unwrap(),
-            hash: Some("abc123def456".to_string()),
+            hash: Some("abc123def456".into()),
             metadata: Some(MediaMetadata::Image(ImageMetadata {
                 width: 1920,
                 height: 1080,
-                format: "JPEG".to_string(),
-                color_type: "RGB".to_string(),
+                format: "JPEG".into(),
+                color_type: "RGB".into(),
             })),
         }
     }
@@ -132,11 +133,11 @@ mod tests {
         let file = create_test_media_file();
 
         assert_eq!(file.path, PathBuf::from("/test/path/image.jpg"));
-        assert_eq!(file.name, "image.jpg");
-        assert_eq!(file.extension, "jpg");
+        assert_eq!(file.name, "image.jpg".into());
+        assert_eq!(file.extension, "jpg".into());
         assert_eq!(file.file_type, FileType::Image);
         assert_eq!(file.size, 5 * 1024 * 1024);
-        assert_eq!(file.hash, Some("abc123def456".to_string()));
+        assert_eq!(file.hash, Some("abc123def456".into()));
         assert!(file.metadata.is_some());
     }
 
@@ -144,8 +145,8 @@ mod tests {
     fn test_media_file_with_no_metadata() {
         let file = MediaFile {
             path: PathBuf::from("/test/document.pdf"),
-            name: "document.pdf".to_string(),
-            extension: "pdf".to_string(),
+            name: "document.pdf".to_string().into(),
+            extension: "pdf".to_string().into(),
             file_type: FileType::Document,
             size: 2048,
             created: Local::now(),
@@ -154,7 +155,7 @@ mod tests {
             metadata: None,
         };
 
-        assert_eq!(file.name, "document.pdf");
+        assert_eq!(file.name, "document.pdf".into());
         assert!(file.hash.is_none());
         assert!(file.metadata.is_none());
     }
@@ -275,26 +276,26 @@ mod tests {
         // Test with empty strings
         let file = MediaFile {
             path: PathBuf::new(),
-            name: String::new(),
-            extension: String::new(),
+            name: String::new().into(),
+            extension: String::new().into(),
             file_type: FileType::Other,
             size: 0,
             created: Local::now(),
             modified: Local::now(),
-            hash: Some(String::new()),
+            hash: Some(String::new().into()),
             metadata: None,
         };
 
-        assert_eq!(file.name, "");
-        assert_eq!(file.extension, "");
+        assert_eq!(file.name, "".into());
+        assert_eq!(file.extension, "".into());
         assert_eq!(file.size, 0);
-        assert_eq!(file.hash, Some(String::new()));
+        assert_eq!(file.hash, Some(String::new().into()));
 
         // Test with very large size
         let large_file = MediaFile {
             path: PathBuf::from("/large.bin"),
-            name: "large.bin".to_string(),
-            extension: "bin".to_string(),
+            name: "large.bin".to_string().into(),
+            extension: "bin".to_string().into(),
             file_type: FileType::Other,
             size: u64::MAX,
             created: Local::now(),

@@ -24,9 +24,9 @@ rustflags = [
     "-Dclippy::trivially_copy_pass_by_ref",
 
     # Error handling
-    #"-Dclippy::panic",
-    #"-Dclippy::panic_in_result_fn",
-    #"-Dclippy::unwrap_in_result",
+    "-Dclippy::panic",
+    "-Dclippy::panic_in_result_fn",
+    "-Dclippy::unwrap_in_result",
 
     # Code clarity
     "-Dclippy::cognitive_complexity",
@@ -43,7 +43,7 @@ rustflags = [
     # Safety and correctness
     "-Dclippy::mem_forget",
     "-Dclippy::mutex_integer",
-    #"-Dclippy::rc_buffer",
+    "-Dclippy::rc_buffer",
     "-Dclippy::rest_pat_in_fully_bound_structs",
 
     # Style consistency
@@ -51,9 +51,9 @@ rustflags = [
     "-Dclippy::separated_literal_suffix",
 
     # Additional allows for practical reasons
-    "-Aclippy::module_name_repetitions", # Common in Rust projects
-    "-Aclippy::must_use_candidate",      # Too noisy for all functions
-    "-Aclippy::missing_const_for_fn",    # Not always practical
+    "-Aclippy::module_name_repetitions",
+    "-Dclippy::must_use_candidate",
+    "-Dclippy::missing_const_for_fn",
 ]
 
 [target.'cfg(test)']
@@ -63,6 +63,12 @@ rustflags = [
     "-Aclippy::panic",
     "-Aclippy::assertions_on_constants",
     "-Aclippy::too_many_lines",
+    "-Aclippy::assertions_on_constants",       # OK in tests
+    "-Aclippy::too_many_lines",                # Tests can be longer
+    "-Aclippy::cognitive_complexity",          # Tests can be complex
+    "-Aclippy::missing_docs_in_private_items",
+    "-Aclippy::panic_in_result_fn",
+    "-Aclippy::unwrap_in_result",
 ]
 
 

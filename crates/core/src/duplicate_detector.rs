@@ -19,8 +19,125 @@ impl Default for DuplicateDetector {
 
 impl DuplicateDetector {
     #[must_use]
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self
+    }
+
+    /// Detect duplicates in a collection of media files
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if file I/O operations fail while calculating hashes.
+    pub async fn detect_duplicates(&self, files: &[Arc<MediaFile>], use_quick_hash: bool) -> Result<DuplicateStats> {
+        info!("Starting duplicate detection for {} files", files.len());
+
+        let potential_duplicates = Self::group_files_by_size(files);
+        info!(
+            "Found {} size groups with potential duplicates",
+            potential_duplicates.len()
+        );
+
+        let hash_groups = self
+            .calculate_hashes_for_groups(potential_duplicates, use_quick_hash)
+            .await;
+        let duplicate_stats = Self::build_duplicate_stats(hash_groups);
+
+        info!(
+            "Found {} duplicate groups with {} total duplicates wasting {} bytes",
+            duplicate_stats.total_groups, duplicate_stats.total_duplicates, duplicate_stats.total_wasted_space
+        );
+
+        Ok(duplicate_stats)
+    }
+
+    /// Groups files by size, returning only groups with multiple files
+    fn group_files_by_size(files: &[Arc<MediaFile>]) -> Vec<(u64, SmallVec<[Arc<MediaFile>; 8]>)> {
+        let mut size_groups: AHashMap<u64, SmallVec<[Arc<MediaFile>; 8]>> = AHashMap::new();
+
+        for file in files {
+            size_groups.entry(file.size).or_default().push(Arc::clone(file));
+        }
+
+        size_groups.into_iter().filter(|(_, group)| group.len() > 1).collect()
+    }
+
+    /// Calculates hashes for all files in the given size groups
+    async fn calculate_hashes_for_groups(
+        &self,
+        size_groups: Vec<(u64, SmallVec<[Arc<MediaFile>; 8]>)>,
+        use_quick_hash: bool,
+    ) -> AHashMap<String, SmallVec<[Arc<MediaFile>; 4]>> {
+        let mut hash_groups: AHashMap<String, SmallVec<[Arc<MediaFile>; 4]>> = AHashMap::new();
+
+        for (size, group) in size_groups {
+            for file in group {
+                if let Some(hashed_file) = self.calculate_and_update_hash(file, size, use_quick_hash).await {
+                    if let Some(hash) = &hashed_file.hash {
+                        hash_groups.entry(hash.to_string()).or_default().push(hashed_file);
+                    }
+                }
+            }
+        }
+
+        hash_groups
+    }
+
+    /// Calculates hash for a single file and returns updated `MediaFile`
+    async fn calculate_and_update_hash(
+        &self,
+        file: Arc<MediaFile>,
+        size: u64,
+        use_quick_hash: bool,
+    ) -> Option<Arc<MediaFile>> {
+        let hash_result = if use_quick_hash {
+            Self::calculate_quick_hash(&file.path, size).await
+        } else {
+            Self::calculate_file_hash(&file.path).await
+        };
+
+        match hash_result {
+            Ok(hash) => {
+                let mut media_file = Arc::try_unwrap(file).unwrap_or_else(|arc| (*arc).clone());
+                media_file.hash = Some(Arc::from(hash.as_str()));
+                Some(Arc::new(media_file))
+            }
+            Err(e) => {
+                warn!("Failed to hash file {:?}: {}", file.path, e);
+                None
+            }
+        }
+    }
+
+    /// Builds `DuplicateStats` from hash groups
+    fn build_duplicate_stats(hash_groups: AHashMap<String, SmallVec<[Arc<MediaFile>; 4]>>) -> DuplicateStats {
+        let mut groups = Vec::new();
+        let mut total_duplicates = 0;
+        let mut total_wasted_space = 0;
+
+        for (_, files) in hash_groups {
+            if files.len() > 1 {
+                let duplicate_group = Self::create_duplicate_group(files);
+                total_duplicates += duplicate_group.files.len() - 1;
+                total_wasted_space += duplicate_group.wasted_space;
+                groups.push(duplicate_group);
+            }
+        }
+
+        // Sort groups by wasted space (largest first)
+        groups.sort_by(|a, b| b.wasted_space.cmp(&a.wasted_space));
+
+        DuplicateStats {
+            total_groups: groups.len(),
+            total_duplicates,
+            total_wasted_space,
+            groups,
+        }
+    }
+
+    /// Creates a single duplicate group
+    fn create_duplicate_group(files: SmallVec<[Arc<MediaFile>; 4]>) -> DuplicateGroup {
+        let wasted_space = files[0].size * (files.len() - 1) as u64;
+        DuplicateGroup { files, wasted_space }
     }
 
     /// Calculate SHA256 hash of a file
@@ -69,87 +186,6 @@ impl DuplicateDetector {
         Ok(format!("{:x}", hasher.finalize()))
     }
 
-    /// Detect duplicates in a collection of media files
-    ///
-    /// # Errors
-    ///
-    /// This function will return an error if file I/O operations fail while calculating hashes.
-    #[allow(clippy::cognitive_complexity)]
-    pub async fn detect_duplicates(&self, files: &[Arc<MediaFile>], use_quick_hash: bool) -> Result<DuplicateStats> {
-        info!("Starting duplicate detection for {} files", files.len());
-
-        // Group files by size first (fast pre-filter)
-        let mut size_groups: AHashMap<u64, SmallVec<[Arc<MediaFile>; 8]>> = AHashMap::new();
-        for file in files {
-            size_groups.entry(file.size).or_default().push(Arc::clone(file));
-        }
-
-        // Only process groups with more than one file
-        let potential_duplicates: Vec<_> = size_groups.into_iter().filter(|(_, group)| group.len() > 1).collect();
-
-        info!(
-            "Found {} size groups with potential duplicates",
-            potential_duplicates.len()
-        );
-
-        // Calculate hashes for potential duplicates
-        let mut hash_groups: AHashMap<String, SmallVec<[Arc<MediaFile>; 4]>> = AHashMap::new();
-
-        for (size, group) in potential_duplicates {
-            for file in group {
-                match if use_quick_hash {
-                    Self::calculate_quick_hash(&file.path, size).await
-                } else {
-                    Self::calculate_file_hash(&file.path).await
-                } {
-                    Ok(hash) => {
-                        // Create a new MediaFile with the hash set, and use that for grouping
-                        let mut mf = Arc::try_unwrap(file).unwrap_or_else(|arc| (*arc).clone());
-                        mf.hash = Some(hash.clone());
-                        let arc_mf = Arc::new(mf);
-                        hash_groups.entry(hash).or_default().push(arc_mf);
-                    }
-                    Err(e) => {
-                        warn!("Failed to hash file {:?}: {}", file.path, e);
-                    }
-                }
-            }
-        }
-
-        // Build duplicate groups
-        let mut groups = Vec::new();
-        let mut total_duplicates = 0;
-        let mut total_wasted_space = 0;
-
-        for (_, files) in hash_groups {
-            if files.len() > 1 {
-                let wasted_space = files[0].size * (files.len() - 1) as u64;
-
-                total_duplicates += files.len() - 1;
-                total_wasted_space += wasted_space;
-
-                groups.push(DuplicateGroup { files, wasted_space });
-            }
-        }
-
-        // Sort groups by wasted space (largest first)
-        groups.sort_by(|a, b| b.wasted_space.cmp(&a.wasted_space));
-
-        info!(
-            "Found {} duplicate groups with {} total duplicates wasting {} bytes",
-            groups.len(),
-            total_duplicates,
-            total_wasted_space
-        );
-
-        Ok(DuplicateStats {
-            total_groups: groups.len(),
-            total_duplicates,
-            total_wasted_space,
-            groups,
-        })
-    }
-
     /// Delete specified files
     ///
     /// # Errors
@@ -195,8 +231,8 @@ mod tests {
 
         Arc::new(MediaFile {
             path,
-            name,
-            extension,
+            name: name.into(),
+            extension: extension.into(),
             file_type: FileType::Image,
             size,
             created: Local::now(),

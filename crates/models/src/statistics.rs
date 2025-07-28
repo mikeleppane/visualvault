@@ -126,8 +126,8 @@ mod tests {
 
         Arc::new(MediaFile {
             path: path_buf,
-            name,
-            extension,
+            name: name.into(),
+            extension: extension.into(),
             file_type,
             size,
             created: modified,

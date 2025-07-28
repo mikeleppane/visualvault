@@ -480,8 +480,8 @@ impl Scanner {
 
         MediaFile {
             path: path.to_path_buf(),
-            name,
-            extension,
+            name: name.into(),
+            extension: extension.into(),
             file_type,
             size,
             created,
@@ -517,6 +517,9 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::float_cmp)] // For comparing floats in tests
     #![allow(clippy::panic)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::expect_used)]
+    #![allow(clippy::panic_in_result_fn)]
 
     use super::*;
     use tempfile::TempDir;
@@ -760,12 +763,12 @@ mod tests {
         assert_eq!(group.files.len(), 2);
 
         // Verify that both duplicate files are in the group
-        let file_names: Vec<&str> = group.files.iter().map(|f| f.name.as_str()).collect();
+        let file_names: Vec<&str> = group.files.iter().map(|f| f.name.as_ref()).collect();
         assert!(file_names.contains(&"file1.jpg"));
         assert!(file_names.contains(&"file2.jpg"));
 
         // The unique file should not be in any duplicate group
-        assert!(!group.files.iter().any(|f| f.name == "unique.jpg"));
+        assert!(!group.files.iter().any(|f| f.name == "unique.jpg".into()));
 
         // After find_duplicates, the files should have hashes updated by DuplicateDetector
         // This happens inside detect_duplicates method
@@ -882,8 +885,8 @@ mod tests {
 
         let file = Scanner::process_file(&file_path, &metadata, size, modified);
 
-        assert_eq!(file.name, "test.jpg");
-        assert_eq!(file.extension, "jpg");
+        assert_eq!(file.name, "test.jpg".into());
+        assert_eq!(file.extension, "jpg".into());
         assert_eq!(file.size, 8);
         assert!(matches!(file.file_type, FileType::Image));
         assert!(file.hash.is_none());
@@ -1081,7 +1084,8 @@ mod tests {
         let jpg_files: Vec<_> = files
             .iter()
             .filter(|f| {
-                matches!(f.file_type, FileType::Image) && (f.extension == "jpg" || f.extension == "JPG".to_lowercase())
+                matches!(f.file_type, FileType::Image)
+                    && (f.extension == "jpg".into() || f.extension == "JPG".to_lowercase().into())
             })
             .collect();
         assert_eq!(jpg_files.len(), 2, "Should handle uppercase and dotted JPG files");

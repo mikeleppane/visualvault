@@ -117,7 +117,7 @@ fn draw_duplicate_groups(f: &mut Frame, area: Rect, stats: &DuplicateStats, app:
                     Span::raw(" wasted"),
                 ]),
                 Line::from(vec![Span::styled(
-                    &group.files[0].name,
+                    &*group.files[0].name,
                     Style::default().fg(Color::Gray),
                 )]),
             ])
@@ -165,7 +165,7 @@ fn draw_group_details(f: &mut Frame, area: Rect, group: &DuplicateGroup, app: &A
 
             Row::new(vec![
                 checkbox.to_string(),
-                file.name.clone(),
+                file.name.to_string(),
                 format_bytes(file.size),
                 path,
             ])

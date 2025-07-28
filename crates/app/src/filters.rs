@@ -82,7 +82,7 @@ impl App {
         }
     }
 
-    pub fn update_filter_focus(&mut self) {
+    pub const fn update_filter_focus(&mut self) {
         self.filter_focus = match self.filter_tab {
             1 => FilterFocus::SizeRange,
             2 => FilterFocus::MediaType,

@@ -149,7 +149,7 @@ impl App {
     }
 
     #[must_use]
-    pub fn get_tab_count(&self) -> usize {
+    pub const fn get_tab_count(&self) -> usize {
         match self.state {
             AppState::Dashboard => 4,
             AppState::Settings => 3,

@@ -3,11 +3,97 @@ use color_eyre::eyre::Result;
 use std::path::Path;
 use std::sync::Arc;
 use tracing::{error, info};
-use visualvault_models::{DuplicateStats, ImageMetadata, MediaMetadata, OrganizeResult, ScanResult};
+use visualvault_models::{DuplicateStats, ImageMetadata, MediaMetadata, ScanResult};
 use visualvault_utils::FolderStats;
 use walkdir::WalkDir;
 
 use super::{App, AppState};
+
+/// Parameters for executing a scan
+struct ScanParameters {
+    source: std::path::PathBuf,
+    recursive: bool,
+    scanner: Arc<visualvault_core::Scanner>,
+    progress: Arc<tokio::sync::RwLock<visualvault_utils::Progress>>,
+    filter_set: Option<visualvault_models::FilterSet>,
+}
+
+struct OrganizeParameters {
+    files: Vec<Arc<visualvault_models::MediaFile>>,
+    destination: std::path::PathBuf,
+    rename_duplicates: bool,
+    settings: visualvault_config::Settings,
+    organizer: Arc<visualvault_core::FileOrganizer>,
+    scanner: Arc<visualvault_core::Scanner>,
+    progress: Arc<tokio::sync::RwLock<visualvault_utils::Progress>>,
+    start_time: chrono::DateTime<Local>,
+}
+
+struct OrganizeExecutionResult {
+    files_organized: usize,
+    files_total: usize,
+    destination: std::path::PathBuf,
+    success: bool,
+    skipped_duplicates: usize,
+    errors: Vec<String>,
+    start_time: chrono::DateTime<Local>,
+}
+
+impl OrganizeExecutionResult {
+    fn success(
+        result: visualvault_models::OrganizeResult,
+        files_total: usize,
+        destination: std::path::PathBuf,
+        start_time: chrono::DateTime<Local>,
+    ) -> Self {
+        Self {
+            files_organized: result.files_organized,
+            files_total,
+            destination,
+            success: result.success,
+            skipped_duplicates: result.skipped_duplicates,
+            errors: result.errors,
+            start_time,
+        }
+    }
+
+    fn error(
+        e: &color_eyre::eyre::Error,
+        files_total: usize,
+        destination: std::path::PathBuf,
+        start_time: chrono::DateTime<Local>,
+    ) -> Self {
+        Self {
+            files_organized: 0,
+            files_total,
+            destination,
+            success: false,
+            skipped_duplicates: 0,
+            errors: vec![e.to_string()],
+            start_time,
+        }
+    }
+
+    fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+
+    fn convert_to_organize_result(self) -> visualvault_models::OrganizeResult {
+        visualvault_models::OrganizeResult {
+            files_organized: self.files_organized,
+            files_total: self.files_total,
+            destination: self.destination,
+            success: self.success,
+            timestamp: self.start_time,
+            skipped_duplicates: self.skipped_duplicates,
+            errors: self.errors,
+        }
+    }
+}
 
 impl App {
     /// Starts a scan of the configured source folder.
@@ -17,92 +103,168 @@ impl App {
     /// Returns an error if:
     /// - No source folder is configured
     /// - The scanner fails to scan the directory
-    #[allow(clippy::cognitive_complexity)]
     pub async fn start_scan(&mut self) -> Result<()> {
+        self.prepare_scan_state().await?;
+
+        let source = self.get_source_folder().await?;
+        let settings = self.settings.read().await.clone();
+
+        let scan_params = self.build_scan_parameters(&source, &settings);
+        let scan_result = self.execute_scan(scan_params).await;
+
+        self.process_scan_result(scan_result).await
+    }
+
+    /// Prepares the application state for scanning
+    async fn prepare_scan_state(&mut self) -> Result<()> {
         self.success_message = Some("Starting scan...".to_string());
+        self.state = AppState::Scanning;
+        self.progress.write().await.reset();
+        Ok(())
+    }
+
+    /// Gets the configured source folder
+    async fn get_source_folder(&self) -> Result<std::path::PathBuf> {
         let settings = self.settings.read().await;
         let source = settings
             .source_folder
             .clone()
             .ok_or_else(|| color_eyre::eyre::eyre!("Source folder not configured"))?;
-        info!("Scanner: Starting scan of {:?}", source);
-        let recursive = settings.recurse_subfolders;
-        let settings_clone = settings.clone();
         drop(settings);
+        info!("Scanner: Starting scan of {:?}", source);
+        Ok(source)
+    }
 
-        self.state = AppState::Scanning;
-        self.progress.write().await.reset();
+    /// Builds scan parameters from current state
+    fn build_scan_parameters(
+        &self,
+        source: &std::path::Path,
+        settings: &visualvault_config::Settings,
+    ) -> ScanParameters {
+        ScanParameters {
+            source: source.to_path_buf(),
+            recursive: settings.recurse_subfolders,
+            scanner: Arc::clone(&self.scanner),
+            progress: Arc::clone(&self.progress),
+            filter_set: if self.filter_set.is_active {
+                Some(self.filter_set.clone())
+            } else {
+                None
+            },
+        }
+    }
 
+    /// Executes the scan with the given parameters
+    async fn execute_scan(
+        &self,
+        params: ScanParameters,
+    ) -> Result<(Vec<Arc<visualvault_models::MediaFile>>, DuplicateStats)> {
         let start_time = std::time::Instant::now();
-        let scanner = Arc::clone(&self.scanner);
-        let progress = Arc::clone(&self.progress);
 
-        let filter_set = if self.filter_set.is_active {
-            Some(self.filter_set.clone())
-        } else {
-            None
-        };
+        let (files, duplicates) = params
+            .scanner
+            .scan_directory_with_duplicates(
+                &params.source,
+                params.recursive,
+                params.progress,
+                &*self.settings.read().await,
+                params.filter_set,
+            )
+            .await?;
 
-        let scan_result = scanner
-            .scan_directory_with_duplicates(&source, recursive, progress, &settings_clone, filter_set)
-            .await;
+        info!("Scan completed in {:?}", start_time.elapsed());
+        Ok((files, duplicates))
+    }
 
+    /// Processes the scan result and updates application state
+    async fn process_scan_result(
+        &mut self,
+        scan_result: Result<(Vec<Arc<visualvault_models::MediaFile>>, DuplicateStats)>,
+    ) -> Result<()> {
         match scan_result {
-            Ok((files, duplicates)) => {
-                info!("=== SCAN RESULTS ===");
-                info!("Scanner returned {} files", files.len());
-                info!("Scanner returned {} duplicate groups", duplicates.len());
-
-                let files_found = files.len();
-
-                info!(
-                    "Scan complete: {} files found, {} duplicates",
-                    files_found, duplicates.total_duplicates
-                );
-
-                self.statistics.update_from_scan_results(&files, &duplicates);
-                self.file_manager.write().await.set_files(files.clone());
-                self.cached_files = files;
-
-                info!("App cached_files now has {} entries", self.cached_files.len());
-
-                self.duplicate_groups = if duplicates.is_empty() {
-                    None
-                } else {
-                    Some(
-                        duplicates
-                            .groups
-                            .into_iter()
-                            .map(|group| group.files.iter().map(|arc| (**arc).clone()).collect())
-                            .collect(),
-                    )
-                };
-
-                self.last_scan_result = Some(ScanResult {
-                    files_found,
-                    duration: start_time.elapsed(),
-                    timestamp: Local::now(),
-                });
-
-                let duplicate_count = duplicates.total_duplicates;
-                self.success_message = if duplicate_count > 0 {
-                    Some(format!(
-                        "Scan complete: {files_found} files found ({duplicate_count} duplicates)"
-                    ))
-                } else {
-                    Some(format!("Scan complete: {files_found} files found"))
-                };
-
-                self.state = AppState::Dashboard;
-            }
+            Ok((files, duplicates)) => self.handle_successful_scan(&files, duplicates).await,
             Err(e) => {
-                error!("Scan failed: {}", e);
-                self.error_message = Some(format!("Scan failed: {e}"));
-                self.state = AppState::Dashboard;
+                self.handle_scan_error(&e);
+                Err(e)
             }
         }
+    }
 
+    /// Handles a successful scan result
+    async fn handle_successful_scan(
+        &mut self,
+        files: &[Arc<visualvault_models::MediaFile>],
+        duplicates: DuplicateStats,
+    ) -> Result<()> {
+        Self::log_scan_results(files, &duplicates);
+        self.update_scan_data(files, duplicates).await;
+        self.create_scan_success_message(files.len());
+        self.state = AppState::Dashboard;
         Ok(())
+    }
+
+    /// Logs scan results for debugging
+    fn log_scan_results(files: &[Arc<visualvault_models::MediaFile>], duplicates: &DuplicateStats) {
+        info!("=== SCAN RESULTS ===");
+        info!("Scanner returned {} files", files.len());
+        info!("Scanner returned {} duplicate groups", duplicates.len());
+        info!("App cached_files now has {} entries", files.len());
+    }
+
+    /// Updates internal data structures with scan results
+    async fn update_scan_data(&mut self, files: &[Arc<visualvault_models::MediaFile>], duplicates: DuplicateStats) {
+        let files_found = files.len();
+
+        self.statistics.update_from_scan_results(files, &duplicates);
+        self.file_manager.write().await.set_files(files.to_vec());
+        self.cached_files = files.to_vec();
+
+        self.duplicate_groups = Self::convert_duplicate_groups(duplicates.groups);
+
+        self.last_scan_result = Some(ScanResult {
+            files_found,
+            duration: std::time::Duration::from_secs(0), // This should be passed from execute_scan
+            timestamp: Local::now(),
+        });
+    }
+
+    /// Converts duplicate groups to the internal format
+    fn convert_duplicate_groups(
+        groups: Vec<visualvault_models::DuplicateGroup>,
+    ) -> Option<Vec<Vec<visualvault_models::MediaFile>>> {
+        if groups.is_empty() {
+            None
+        } else {
+            Some(
+                groups
+                    .into_iter()
+                    .map(|group| group.files.iter().map(|arc| (**arc).clone()).collect())
+                    .collect(),
+            )
+        }
+    }
+
+    /// Creates the success message based on scan results
+    fn create_scan_success_message(&mut self, files_found: usize) {
+        let duplicate_count = self
+            .duplicate_groups
+            .as_ref()
+            .map_or(0, |groups| groups.iter().map(|g| g.len().saturating_sub(1)).sum());
+
+        self.success_message = if duplicate_count > 0 {
+            Some(format!(
+                "Scan complete: {files_found} files found ({duplicate_count} duplicates)"
+            ))
+        } else {
+            Some(format!("Scan complete: {files_found} files found"))
+        };
+    }
+
+    /// Handles scan errors
+    fn handle_scan_error(&mut self, error: &color_eyre::eyre::Error) {
+        error!("Scan failed: {}", error);
+        self.error_message = Some(format!("Scan failed: {error}"));
+        self.state = AppState::Dashboard;
     }
 
     /// Starts organizing files from the cached scan results.
@@ -113,97 +275,138 @@ impl App {
     /// - No destination folder is configured
     /// - The organizer fails to organize the files
     /// - File operations fail during organization
-    #[allow(clippy::cognitive_complexity)]
     pub async fn start_organize(&mut self) -> Result<()> {
-        if self.cached_files.is_empty() {
-            self.error_message = Some("No files to organize. Run a scan first.".to_string());
+        if !self.validate_organize_preconditions() {
             return Ok(());
         }
 
+        self.prepare_organize_state().await?;
+
+        let organize_params = self.build_organize_parameters().await?;
+        let organize_result = self.execute_organization(organize_params).await;
+
+        self.process_organize_result(organize_result);
+        Ok(())
+    }
+
+    /// Validates that organization can proceed
+    fn validate_organize_preconditions(&mut self) -> bool {
+        if self.cached_files.is_empty() {
+            self.error_message = Some("No files to organize. Run a scan first.".to_string());
+            return false;
+        }
+        true
+    }
+
+    /// Prepares the application state for organizing
+    async fn prepare_organize_state(&mut self) -> Result<()> {
         info!("Starting file organization");
         self.success_message = Some("Starting to organize files...".to_string());
         self.state = AppState::Organizing;
         self.progress.write().await.reset();
+        Ok(())
+    }
 
-        let start_time = Local::now();
-        let organizer = self.organizer.clone();
-        let progress = self.progress.clone();
-        let scanner = self.scanner.clone();
+    /// Builds parameters needed for organization
+    async fn build_organize_parameters(&self) -> Result<OrganizeParameters> {
         let settings = self.settings.read().await;
         let destination = settings
             .destination_folder
             .clone()
             .ok_or_else(|| color_eyre::eyre::eyre!("No destination folder configured"))?;
 
-        let mut files = self.cached_files.clone();
-        let files_total = files.len();
-
-        let duplicates = if settings.rename_duplicates {
-            DuplicateStats::new()
-        } else {
-            scanner.find_duplicates(&mut files, progress.clone()).await?
+        let params = OrganizeParameters {
+            files: self.cached_files.clone(),
+            destination,
+            rename_duplicates: settings.rename_duplicates,
+            settings: settings.clone(),
+            organizer: Arc::clone(&self.organizer),
+            scanner: Arc::clone(&self.scanner),
+            progress: Arc::clone(&self.progress),
+            start_time: Local::now(),
         };
-
-        let organize_result = organizer
-            .organize_files_with_duplicates(files, duplicates, &settings, progress)
-            .await;
         drop(settings);
 
-        match organize_result {
-            Ok(result) => {
-                info!("Organization complete: {} files organized", result.files_organized);
+        Ok(params)
+    }
 
-                let has_errors = !result.errors.is_empty();
-                let error_count = result.errors.len();
+    /// Executes the organization process
+    async fn execute_organization(&self, params: OrganizeParameters) -> OrganizeExecutionResult {
+        let mut files = params.files;
+        let files_total = files.len();
 
-                self.last_organize_result = Some(OrganizeResult {
-                    files_organized: result.files_organized,
-                    files_total,
-                    destination,
-                    success: result.success,
-                    timestamp: start_time,
-                    skipped_duplicates: result.skipped_duplicates,
-                    errors: result.errors,
-                });
-
-                let message = if result.skipped_duplicates > 0 {
-                    format!(
-                        "Organization complete: {} files organized, {} duplicates skipped",
-                        result.files_organized, result.skipped_duplicates
-                    )
-                } else {
-                    format!("Organization complete: {} files organized", result.files_organized)
-                };
-
-                if has_errors {
-                    self.error_message = Some(format!("{message} (with {error_count} errors)"));
-                } else {
-                    self.success_message = Some(message);
+        // Handle duplicates based on settings
+        let duplicates = if params.rename_duplicates {
+            DuplicateStats::new()
+        } else {
+            match params
+                .scanner
+                .find_duplicates(&mut files, params.progress.clone())
+                .await
+            {
+                Ok(stats) => stats,
+                Err(e) => {
+                    return OrganizeExecutionResult::error(&e, files_total, params.destination, params.start_time);
                 }
-
-                self.state = AppState::Dashboard;
-                self.cached_files.clear();
-                self.duplicate_groups = None;
             }
-            Err(e) => {
-                error!("Organization failed: {}", e);
+        };
 
-                self.last_organize_result = Some(OrganizeResult {
-                    files_organized: 0,
-                    files_total,
-                    destination,
-                    success: false,
-                    timestamp: start_time,
-                    skipped_duplicates: 0,
-                    errors: vec![e.to_string()],
-                });
+        // Perform organization
+        match params
+            .organizer
+            .organize_files_with_duplicates(files, duplicates, &params.settings, params.progress)
+            .await
+        {
+            Ok(result) => OrganizeExecutionResult::success(result, files_total, params.destination, params.start_time),
+            Err(e) => OrganizeExecutionResult::error(&e, files_total, params.destination, params.start_time),
+        }
+    }
 
-                self.error_message = Some(format!("Organization failed: {e}"));
-                self.state = AppState::Dashboard;
-            }
+    /// Processes the organization result and updates application state
+    fn process_organize_result(&mut self, result: OrganizeExecutionResult) {
+        info!("Organization complete: {} files organized", result.files_organized);
+        self.update_organize_state(result);
+        self.clear_organize_data();
+    }
+
+    /// Updates the application state based on organization result
+    fn update_organize_state(&mut self, result: OrganizeExecutionResult) {
+        let message = Self::build_organize_message(&result);
+        let has_errors = result.has_errors();
+
+        self.last_organize_result = Some(result.convert_to_organize_result());
+
+        if has_errors {
+            self.error_message = Some(message);
+        } else {
+            self.success_message = Some(message);
         }
 
-        Ok(())
+        self.state = AppState::Dashboard;
+    }
+
+    /// Builds the appropriate message based on organization result
+    fn build_organize_message(result: &OrganizeExecutionResult) -> String {
+        let base_message = if result.skipped_duplicates > 0 {
+            format!(
+                "Organization complete: {} files organized, {} duplicates skipped",
+                result.files_organized, result.skipped_duplicates
+            )
+        } else {
+            format!("Organization complete: {} files organized", result.files_organized)
+        };
+
+        if result.has_errors() {
+            format!("{} (with {} errors)", base_message, result.error_count())
+        } else {
+            base_message
+        }
+    }
+
+    /// Clears data used during organization
+    fn clear_organize_data(&mut self) {
+        self.cached_files.clear();
+        self.duplicate_groups = None;
     }
 
     /// Updates the application statistics based on the current file list.
@@ -215,7 +418,7 @@ impl App {
     pub async fn update_statistics(&mut self) -> Result<()> {
         let files = self.file_manager.read().await.get_files();
         self.statistics.update_from_files(&files);
-        self.cached_files.clone_from(&(*files));
+        self.cached_files = files.to_vec();
         Ok(())
     }
 

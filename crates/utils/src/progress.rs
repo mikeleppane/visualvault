@@ -36,12 +36,12 @@ impl Progress {
     }
 
     #[allow(dead_code)]
-    pub fn set_total(&mut self, total: usize) {
+    pub const fn set_total(&mut self, total: usize) {
         self.total = total;
     }
 
     #[allow(dead_code)]
-    pub fn set_current(&mut self, current: usize) {
+    pub const fn set_current(&mut self, current: usize) {
         self.current = current;
         if self.current >= self.total && self.total > 0 {
             self.is_complete = true;

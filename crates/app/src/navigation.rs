@@ -3,13 +3,13 @@ use visualvault_models::InputMode;
 use super::App;
 
 impl App {
-    pub fn next_tab(&mut self) {
+    pub const fn next_tab(&mut self) {
         let max_tabs = self.get_tab_count();
         self.selected_tab = (self.selected_tab + 1) % max_tabs;
         self.selected_setting = 0;
     }
 
-    pub fn previous_tab(&mut self) {
+    pub const fn previous_tab(&mut self) {
         let max_tabs = self.get_tab_count();
         if self.selected_tab > 0 {
             self.selected_tab -= 1;
@@ -19,7 +19,7 @@ impl App {
         self.selected_setting = 0;
     }
 
-    pub fn move_selection_up(&mut self) {
+    pub const fn move_selection_up(&mut self) {
         if self.selected_file_index > 0 {
             self.selected_file_index -= 1;
             if self.selected_file_index < self.scroll_offset {
@@ -38,7 +38,7 @@ impl App {
         }
     }
 
-    pub fn page_up(&mut self) {
+    pub const fn page_up(&mut self) {
         if self.selected_file_index >= 10 {
             self.selected_file_index -= 10;
         } else {
