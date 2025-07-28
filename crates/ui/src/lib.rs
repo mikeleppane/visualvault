@@ -1,9 +1,12 @@
+#![allow(clippy::cast_sign_loss)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::cast_precision_loss)]
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Padding, Paragraph},
+    widgets::{Block, BorderType, Borders, Clear, Gauge, Padding, Paragraph},
 };
 use tracing::info;
 use visualvault_app::App;
@@ -18,19 +21,33 @@ mod progress;
 mod search;
 mod settings;
 
+// Beautiful color palette (matching dashboard)
+const ACCENT_COLOR: Color = Color::Rgb(139, 233, 253); // Cyan
+const SUCCESS_COLOR: Color = Color::Rgb(80, 250, 123); // Green
+const WARNING_COLOR: Color = Color::Rgb(255, 184, 108); // Orange
+const ERROR_COLOR: Color = Color::Rgb(255, 85, 85); // Red
+const MUTED_COLOR: Color = Color::Rgb(98, 114, 164); // Gray
+const BACKGROUND_ALT: Color = Color::Rgb(30, 30, 46); // Dark background
+const BACKGROUND_MAIN: Color = Color::Rgb(24, 24, 37); // Main background
+const VERSION: &str = "0.7.0"; // Updated version
+
 pub fn draw(f: &mut Frame, app: &mut App) {
+    // Draw main background
+    let background = Block::default().style(Style::default().bg(BACKGROUND_MAIN));
+    f.render_widget(background, f.area());
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .margin(0)
         .constraints([
-            Constraint::Length(5), // Increased header height from 3 to 5
+            Constraint::Length(6), // Enhanced header height
             Constraint::Min(0),    // Main content
-            Constraint::Length(3), // Status bar
+            Constraint::Length(4), // Enhanced status bar
         ])
         .split(f.area());
 
     // Draw header
-    draw_header(f, chunks[0], app);
+    draw_enhanced_header(f, chunks[0], app);
 
     // Draw main content based on state
     match app.state {
@@ -56,8 +73,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         AppState::Filters => filtering::draw(f, chunks[1], app),
     }
 
-    // Draw status bar
-    draw_status_bar(f, chunks[2], app);
+    // Draw enhanced status bar
+    draw_enhanced_status_bar(f, chunks[2], app);
 
     // Draw help overlay if needed
     if app.show_help {
@@ -65,215 +82,321 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     }
 }
 
-#[allow(clippy::cognitive_complexity)]
-fn draw_header(f: &mut Frame, area: Rect, app: &App) {
-    // Create ASCII art logo
-    let logo_lines = [
-        "╔═══════════════════════════════════════════════════════════════════╗",
-        "║  🖼️  ╦  ╦╦╔═╗╦ ╦╔═╗╦    ╦  ╦╔═╗╦ ╦╦  ╔╦╗  🖼️                     ║",
-        "║      ╚╗╔╝║╚═╗║ ║╠═╣║    ╚╗╔╝╠═╣║ ║║   ║                           ║",
-        "║       ╚╝ ╩╚═╝╚═╝╩ ╩╩═╝   ╚╝ ╩ ╩╚═╝╩═╝ ╩   Media Organizer v0.6    ║",
-        "╚═══════════════════════════════════════════════════════════════════╝",
+#[allow(clippy::too_many_lines)]
+fn draw_enhanced_header(f: &mut Frame, area: Rect, app: &App) {
+    // Create gradient background for header
+    let header_block = Block::default()
+        .borders(Borders::BOTTOM)
+        .border_type(BorderType::Thick)
+        .border_style(Style::default().fg(MUTED_COLOR))
+        .style(Style::default().bg(BACKGROUND_ALT));
+
+    f.render_widget(header_block, area);
+
+    // Split header into sections
+    let header_chunks = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Length(20), // Left: Logo
+            Constraint::Min(0),     // Center: Title
+            Constraint::Length(25), // Right: State
+        ])
+        .margin(1)
+        .split(area);
+
+    // Left section - Enhanced logo
+    let logo_lines = vec![
+        Line::from(vec![
+            Span::styled("🖼️", Style::default().fg(ACCENT_COLOR)),
+            Span::raw(" "),
+            Span::styled("Visual", Style::default().fg(ACCENT_COLOR).add_modifier(Modifier::BOLD)),
+            Span::styled("Vault", Style::default().fg(SUCCESS_COLOR).add_modifier(Modifier::BOLD)),
+        ]),
+        Line::from(vec![Span::styled(
+            "   Media Organizer",
+            Style::default().fg(MUTED_COLOR).add_modifier(Modifier::ITALIC),
+        )]),
     ];
 
-    // Create the header content with multiple styled spans
-    let mut header_lines = Vec::new();
+    let logo = Paragraph::new(logo_lines).alignment(Alignment::Left);
+    f.render_widget(logo, header_chunks[0]);
 
-    for (i, line) in logo_lines.iter().enumerate() {
-        let styled_line = match i {
-            0 | 4 => {
-                // Border lines
+    // Center section - Animated title based on state
+    #[allow(clippy::cast_possible_truncation)]
+    let get_spinner = || {
+        let frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        let idx = (chrono::Local::now().timestamp_millis() / 100) as usize % frames.len();
+        frames[idx]
+    };
+    let center_content = match app.state {
+        AppState::Scanning => {
+            vec![
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(
+                        get_spinner(),
+                        Style::default().fg(ACCENT_COLOR).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" "),
+                    Span::styled("Scanning for media files...", Style::default().fg(ACCENT_COLOR)),
+                ]),
+            ]
+        }
+        AppState::Organizing => {
+            vec![
+                Line::from(""),
+                Line::from(vec![
+                    Span::styled(
+                        get_spinner(),
+                        Style::default().fg(SUCCESS_COLOR).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(" "),
+                    Span::styled("Organizing your collection...", Style::default().fg(SUCCESS_COLOR)),
+                ]),
+            ]
+        }
+        _ => {
+            vec![
+                Line::from(""),
                 Line::from(vec![Span::styled(
-                    *line,
-                    Style::default().fg(Color::Rgb(100, 100, 100)),
-                )])
-            }
-            1..=3 => {
-                // Logo lines with gradient effect
-                let parts: Vec<&str> = line.split("  ").collect();
-                let mut spans = Vec::new();
-
-                for (j, part) in parts.iter().enumerate() {
-                    if part.contains("🖼️") {
-                        spans.push(Span::raw("🖼️"));
-                    } else if part.contains("╦") || part.contains("╚") || part.contains("╩") {
-                        // ASCII art characters with cyan gradient
-                        let color = match i {
-                            2 => Color::Rgb(0, 200, 200),
-                            3 => Color::Rgb(0, 150, 150),
-                            _ => Color::Cyan,
-                        };
-                        spans.push(Span::styled(
-                            *part,
-                            Style::default().fg(color).add_modifier(Modifier::BOLD),
-                        ));
-                    } else if part.contains("Media Organizer") {
-                        spans.push(Span::styled(
-                            *part,
-                            Style::default()
-                                .fg(Color::Rgb(150, 150, 150))
-                                .add_modifier(Modifier::ITALIC),
-                        ));
-                    } else {
-                        spans.push(Span::raw(*part));
-                    }
-
-                    if j < parts.len() - 1 {
-                        spans.push(Span::raw("  "));
-                    }
-                }
-
-                if i == 1 {
-                    // Add a space before the logo
-                    spans.insert(spans.len() - 2, Span::raw(" "));
-                }
-
-                Line::from(spans)
-            }
-            _ => Line::from(*line),
-        };
-
-        header_lines.push(styled_line);
-    }
-
-    // Add state indicator with icons
-    let state_text = match app.state {
-        AppState::Dashboard => ("📊", "Dashboard", Color::Green),
-        AppState::Settings => ("⚙️", "Settings", Color::Yellow),
-        AppState::Scanning => ("🔍", "Scanning...", Color::Cyan),
-        AppState::Organizing => ("📁", "Organizing...", Color::Blue),
-        AppState::Search => ("🔎", "Search", Color::White),
-        AppState::FileDetails(_) => ("📄", "File Details", Color::White),
-        AppState::DuplicateReview => ("🔄", "Duplicate Review", Color::Magenta),
-        AppState::Filters => ("🔧", "Filters", Color::Magenta),
+                    "Organize • Manage • Discover",
+                    Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                )]),
+            ]
+        }
     };
 
-    // Create centered header block
-    let header_block = Block::default().borders(Borders::NONE).padding(Padding::ZERO);
+    let center = Paragraph::new(center_content).alignment(Alignment::Center);
+    f.render_widget(center, header_chunks[1]);
 
-    let header_content = Paragraph::new(header_lines)
-        .block(header_block)
-        .alignment(Alignment::Center);
+    // Right section - Enhanced state indicator
+    let state_info = match app.state {
+        AppState::Dashboard => ("📊", "Dashboard", ACCENT_COLOR, "Browse your media"),
+        AppState::Settings => ("⚙️", "Settings", WARNING_COLOR, "Configure options"),
+        AppState::Scanning => ("🔍", "Scanning", ACCENT_COLOR, "Finding files..."),
+        AppState::Organizing => ("📁", "Organizing", SUCCESS_COLOR, "Moving files..."),
+        AppState::Search => ("🔎", "Search", Color::White, "Find files"),
+        AppState::FileDetails(_) => ("📄", "Details", Color::White, "File information"),
+        AppState::DuplicateReview => ("🔄", "Duplicates", Color::Magenta, "Review duplicates"),
+        AppState::Filters => ("🔧", "Filters", Color::Magenta, "Advanced filtering"),
+    };
 
-    f.render_widget(header_content, area);
+    let state_lines = vec![
+        Line::from(vec![
+            Span::styled(state_info.0, Style::default().fg(state_info.2)),
+            Span::raw(" "),
+            Span::styled(
+                state_info.1,
+                Style::default().fg(state_info.2).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![Span::styled(
+            state_info.3,
+            Style::default().fg(MUTED_COLOR).add_modifier(Modifier::ITALIC),
+        )]),
+    ];
 
-    // Add current state indicator in the top right
-    let state_indicator = format!("{} {}", state_text.0, state_text.1);
-    #[allow(clippy::cast_possible_truncation)]
-    let state_area = Rect {
-        x: area.x + area.width.saturating_sub(state_indicator.len() as u16 + 4),
-        y: area.y + 1,
-        width: state_indicator.len() as u16 + 2,
+    let state_widget = Paragraph::new(state_lines).alignment(Alignment::Right).block(
+        Block::default()
+            .borders(Borders::LEFT)
+            .border_style(Style::default().fg(MUTED_COLOR))
+            .padding(Padding::horizontal(1)),
+    );
+    f.render_widget(state_widget, header_chunks[2]);
+
+    // Add version number in top-right corner
+    let version_area = Rect {
+        x: area.x + area.width - VERSION.len() as u16 - 2,
+        y: area.y,
+        width: VERSION.len() as u16 + 1,
         height: 1,
     };
-
-    let state_widget = Paragraph::new(Line::from(vec![
-        Span::raw(" "),
-        Span::styled(
-            state_indicator,
-            Style::default().fg(state_text.2).add_modifier(Modifier::BOLD),
-        ),
-        Span::raw(" "),
-    ]))
-    .style(Style::default().bg(Color::Rgb(30, 30, 30)));
-
-    f.render_widget(state_widget, state_area);
+    let version_widget = Paragraph::new(Span::styled(
+        VERSION,
+        Style::default().fg(MUTED_COLOR).add_modifier(Modifier::DIM),
+    ));
+    f.render_widget(version_widget, version_area);
 }
 
 #[allow(clippy::too_many_lines)]
-fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
+fn draw_enhanced_status_bar(f: &mut Frame, area: Rect, app: &App) {
+    // Enhanced status bar with gradient background
+    let status_block = Block::default()
+        .borders(Borders::TOP)
+        .border_type(BorderType::Thick)
+        .border_style(Style::default().fg(MUTED_COLOR))
+        .style(Style::default().bg(BACKGROUND_ALT));
+
+    f.render_widget(status_block.clone(), area);
+
+    let inner_area = status_block.inner(area);
+
     let chunks = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(20),
-            Constraint::Percentage(60),
-            Constraint::Percentage(20),
+            Constraint::Length(37), // Shortcuts
+            Constraint::Min(0),     // Messages/Status
+            Constraint::Length(30), // Stats
         ])
-        .split(area);
+        .margin(1)
+        .split(inner_area);
 
-    // Left section - shortcuts
+    // Left section - Context-aware shortcuts with icons
     let shortcuts = match app.state {
-        AppState::Dashboard => "q:Quit | ?:Help | Tab:Switch",
-        AppState::Settings => "q:Back | S:Save | R:Reset",
-        AppState::FileDetails(_) => "ESC/q:Close | ↑↓:Navigate",
-        _ => "q:Quit | ?:Help",
+        AppState::Dashboard => vec![
+            ("⌨", "q", "Quit", MUTED_COLOR),
+            ("❓", "?", "Help", ACCENT_COLOR),
+            ("🔄", "Tab", "Switch", WARNING_COLOR),
+        ],
+        AppState::Settings => vec![
+            ("◀", "q", "Back", MUTED_COLOR),
+            ("💾", "S", "Save", SUCCESS_COLOR),
+            ("↺", "R", "Reset", ERROR_COLOR),
+        ],
+        AppState::FileDetails(_) => vec![
+            ("⎋", "ESC", "Close", MUTED_COLOR),
+            ("↕", "↑↓", "Navigate", ACCENT_COLOR),
+            ("", "", "", Color::default()),
+        ],
+        AppState::DuplicateReview => vec![
+            ("◀", "q", "Back", MUTED_COLOR),
+            ("🗑", "d", "Delete", ERROR_COLOR),
+            ("☑", "a", "Select", WARNING_COLOR),
+        ],
+        _ => vec![
+            ("◀", "q", "Quit", MUTED_COLOR),
+            ("❓", "?", "Help", ACCENT_COLOR),
+            ("", "", "", Color::default()),
+        ],
     };
 
-    let left = Paragraph::new(shortcuts)
-        .style(Style::default().fg(Color::Rgb(150, 150, 150)))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
-        );
+    let mut shortcut_spans = vec![];
+    for (i, (icon, key, desc, color)) in shortcuts.iter().enumerate() {
+        if !key.is_empty() {
+            if i > 0 {
+                shortcut_spans.push(Span::raw(" │ "));
+            }
+            shortcut_spans.push(Span::styled(*icon, Style::default().fg(*color)));
+            shortcut_spans.push(Span::raw(" "));
+            shortcut_spans.push(Span::styled(
+                *key,
+                Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+            ));
+            shortcut_spans.push(Span::raw(":"));
+            shortcut_spans.push(Span::styled(*desc, Style::default().fg(MUTED_COLOR)));
+        }
+    }
 
-    // Center section - messages or current operation
+    let left = Paragraph::new(Line::from(shortcut_spans)).alignment(Alignment::Left);
+    f.render_widget(left, chunks[0]);
+
+    // Center section - Enhanced messages with animations
     let center_content = if let Some(error) = &app.error_message {
         vec![Line::from(vec![
-            Span::styled("❌ ", Style::default().fg(Color::Red)),
-            Span::styled(error, Style::default().fg(Color::Red)),
+            Span::styled("🚨 ", Style::default().fg(ERROR_COLOR)),
+            Span::styled(error, Style::default().fg(ERROR_COLOR).add_modifier(Modifier::BOLD)),
         ])]
     } else if let Some(success) = &app.success_message {
         vec![Line::from(vec![
-            Span::styled("✅ ", Style::default().fg(Color::Green)),
-            Span::styled(success, Style::default().fg(Color::Green)),
+            Span::styled("✨ ", Style::default().fg(SUCCESS_COLOR)),
+            Span::styled(success, Style::default().fg(SUCCESS_COLOR).add_modifier(Modifier::BOLD)),
         ])]
     } else {
-        // Show state-specific status
         match app.state {
             AppState::FileDetails(idx) => {
                 if let Some(file) = app.cached_files.get(idx) {
                     vec![Line::from(vec![
-                        Span::styled("📋 ", Style::default().fg(Color::Cyan)),
-                        Span::styled(format!("Viewing: {}", file.name), Style::default().fg(Color::Cyan)),
+                        Span::styled("📋 ", Style::default().fg(ACCENT_COLOR)),
+                        Span::raw("Viewing: "),
+                        Span::styled(
+                            file.name.to_string(),
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                        ),
                     ])]
                 } else {
                     vec![Line::from(vec![Span::styled(
-                        "Ready",
-                        Style::default().fg(Color::Rgb(100, 100, 100)),
+                        "✓ Ready",
+                        Style::default().fg(SUCCESS_COLOR),
                     )])]
                 }
             }
             AppState::Scanning => {
-                vec![Line::from(vec![
-                    Span::styled(
-                        "⟳ ",
-                        Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
-                    ),
-                    Span::styled("Scanning files...", Style::default().fg(Color::Blue)),
-                ])]
+                let progress = app.progress.try_read();
+                if let Ok(progress) = progress {
+                    vec![Line::from(vec![
+                        Span::styled(
+                            "🔍 ",
+                            Style::default().fg(ACCENT_COLOR).add_modifier(Modifier::SLOW_BLINK),
+                        ),
+                        Span::raw("Found "),
+                        Span::styled(
+                            format!("{}", progress.current),
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(" files..."),
+                    ])]
+                } else {
+                    vec![Line::from(vec![Span::styled(
+                        "🔍 Scanning...",
+                        Style::default().fg(ACCENT_COLOR),
+                    )])]
+                }
             }
             AppState::Organizing => {
-                vec![Line::from(vec![
-                    Span::styled(
-                        "⟳ ",
-                        Style::default().fg(Color::Blue).add_modifier(Modifier::SLOW_BLINK),
-                    ),
-                    Span::styled("Organizing files...", Style::default().fg(Color::Blue)),
-                ])]
+                let progress = app.progress.try_read();
+                if let Ok(progress) = progress {
+                    let percentage = if progress.total > 0 {
+                        (progress.current as f32 / progress.total as f32 * 100.0) as u8
+                    } else {
+                        0
+                    };
+                    vec![Line::from(vec![
+                        Span::styled(
+                            "📦 ",
+                            Style::default().fg(SUCCESS_COLOR).add_modifier(Modifier::SLOW_BLINK),
+                        ),
+                        Span::raw("Organizing: "),
+                        Span::styled(
+                            format!("{}/{}", progress.current, progress.total),
+                            Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(" ("),
+                        Span::styled(
+                            format!("{percentage}%"),
+                            Style::default().fg(SUCCESS_COLOR).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::raw(")"),
+                    ])]
+                } else {
+                    vec![Line::from(vec![Span::styled(
+                        "📦 Organizing...",
+                        Style::default().fg(SUCCESS_COLOR),
+                    )])]
+                }
             }
             _ => {
-                vec![Line::from(vec![Span::styled(
-                    "Ready",
-                    Style::default().fg(Color::Rgb(100, 100, 100)),
-                )])]
+                vec![Line::from(vec![
+                    Span::styled("✓ ", Style::default().fg(SUCCESS_COLOR)),
+                    Span::styled("Ready", Style::default().fg(Color::White)),
+                ])]
             }
         }
     };
 
-    let center = Paragraph::new(center_content).alignment(Alignment::Center).block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
-    );
+    let center = Paragraph::new(center_content).alignment(Alignment::Center);
+    f.render_widget(center, chunks[1]);
 
-    // Right section - stats
-    let stats = match app.state {
+    // Right section - Enhanced stats with mini gauges
+    let stats_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(1), Constraint::Length(1)])
+        .split(chunks[2]);
+
+    let stats_text = match app.state {
         AppState::FileDetails(idx) => {
-            // Show file-specific stats when viewing details
             if let Some(file) = app.cached_files.get(idx) {
                 format!(
-                    "{} | {} | File {}/{}",
+                    "📄 {} │ {} │ {}/{}",
                     file.file_type,
                     format_bytes(file.size),
                     idx + 1,
@@ -281,8 +404,8 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
                 )
             } else {
                 format!(
-                    "Files: {} | Tab: {}/{}",
-                    app.statistics.total_files,
+                    "📊 {} files │ Tab {}/{}",
+                    format_number(app.statistics.total_files),
                     app.selected_tab + 1,
                     app.get_tab_count()
                 )
@@ -290,26 +413,61 @@ fn draw_status_bar(f: &mut Frame, area: Rect, app: &App) {
         }
         _ => {
             format!(
-                "Files: {} | Tab: {}/{}",
-                app.statistics.total_files,
+                "📊 {} files │ {} │ Tab {}/{}",
+                format_number(app.statistics.total_files),
+                format_bytes(app.statistics.total_size),
                 app.selected_tab + 1,
                 app.get_tab_count()
             )
         }
     };
 
-    let right = Paragraph::new(stats)
+    let right = Paragraph::new(stats_text)
         .alignment(Alignment::Right)
-        .style(Style::default().fg(Color::Rgb(150, 150, 150)))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_style(Style::default().fg(Color::Rgb(60, 60, 60))),
-        );
+        .style(Style::default().fg(Color::White));
+    f.render_widget(right, stats_chunks[0]);
 
-    f.render_widget(left, chunks[0]);
-    f.render_widget(center, chunks[1]);
-    f.render_widget(right, chunks[2]);
+    // Add a subtle progress indicator for operations
+    if matches!(app.state, AppState::Scanning | AppState::Organizing) {
+        let progress = app.progress.try_read();
+        if let Ok(progress) = progress {
+            let ratio = if progress.total > 0 {
+                progress.current as f64 / progress.total as f64
+            } else {
+                0.0
+            };
+
+            let color = match app.state {
+                AppState::Scanning => ACCENT_COLOR,
+                AppState::Organizing => SUCCESS_COLOR,
+                _ => MUTED_COLOR,
+            };
+
+            let mini_gauge = Gauge::default()
+                .gauge_style(Style::default().fg(color).bg(Color::Rgb(40, 40, 55)))
+                .ratio(ratio)
+                .label("");
+            f.render_widget(mini_gauge, stats_chunks[1]);
+        }
+    }
+}
+
+// Helper function to format numbers with commas
+fn format_number(n: usize) -> String {
+    let s = n.to_string();
+    let mut result = String::new();
+    let mut count = 0;
+
+    for ch in s.chars().rev() {
+        if count == 3 {
+            result.push(',');
+            count = 0;
+        }
+        result.push(ch);
+        count += 1;
+    }
+
+    result.chars().rev().collect()
 }
 
 #[allow(clippy::too_many_lines)]

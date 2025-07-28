@@ -21,3 +21,9 @@ lint:
 lint-fix:
     @echo "Fixing linting issues..."
     cargo clippy --fix -- -D warnings
+
+# Run tests
+test:
+    @echo "\nRunning tests..."
+    cargo nextest run --workspace 
+    @echo "Done running tests!\n"  

@@ -10,7 +10,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.6.5"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
 authors = ["Mikko Leppänen <mleppan23@gmail.com>"]
@@ -63,7 +63,6 @@ smallvec = { version = "1.15.1", features = [
     "serde",
     "write",
 ] }
-clap = { version = "4.5", features = ["derive", "color"] }
 
 [package]
 name = "visualvault"
@@ -84,7 +83,6 @@ visualvault-core = { workspace = true }
 visualvault-models = { workspace = true }
 visualvault-ui = { workspace = true }
 visualvault-utils = { workspace = true }
-clap = { workspace = true }
 color-eyre = { workspace = true }
 crossterm = { workspace = true }
 ratatui = { workspace = true }
@@ -95,13 +93,13 @@ tracing-subscriber = { workspace = true }
 [dev-dependencies]
 dirs = { workspace = true }
 tempfile = "3.20"
-# Conditional dependencies for allocatorstempfile = "3.20"
 serde_json = "1.0"
 tokio = { version = "1", features = ["full", "test-util"] }
 color-eyre = "0.6"
 chrono = "0.4"
 criterion = { version = "3.0.4", package = "codspeed-criterion-compat" }
 proptest = "1.7"
+
 [target.'cfg(windows)'.dependencies]
 mimalloc = "0.1"
 
