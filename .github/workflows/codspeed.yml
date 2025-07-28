@@ -2,23 +2,23 @@ name: CodSpeed
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
     paths:
-      - 'src/**'
-      - 'benches/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/benchmark.yml'
-      - '.github/workflows/codspeed.yml'
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/benchmark.yml"
+      - ".github/workflows/codspeed.yml"
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'src/**'
-      - 'benches/**'
-      - 'Cargo.toml'
-      - 'Cargo.lock'
-      - '.github/workflows/benchmark.yml'
-      - '.github/workflows/codspeed.yml'
+      - "src/**"
+      - "benches/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/benchmark.yml"
+      - ".github/workflows/codspeed.yml"
   # `workflow_dispatch` allows CodSpeed to trigger backtest
   # performance analysis in order to generate initial data.
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
         with:
           channel: stable
           cache-target: release
-          bins: cargo-codspeed@3.0.2
+          bins: cargo-codspeed@3.0.4
 
       - name: Build the benchmark target(s)
         run: cargo codspeed build
