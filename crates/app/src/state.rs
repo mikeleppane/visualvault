@@ -3,7 +3,9 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 use ahash::AHashMap;
 use color_eyre::eyre::Result;
 use ratatui::widgets::ListState;
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, task::JoinHandle};
+use tracing::error;
+use tracing::info;
 use visualvault_config::Settings;
 use visualvault_core::{DuplicateDetector, FileManager, FileOrganizer, Scanner};
 use visualvault_models::{
@@ -73,6 +75,12 @@ pub struct App {
 
     // Undo state
     pub last_undo_result: Option<String>,
+
+    pub folder_stats_tasks: AHashMap<std::path::PathBuf, JoinHandle<FolderStats>>,
+    pub folder_stats_in_progress: HashSet<std::path::PathBuf>,
+
+    pub scan_task: Option<JoinHandle<Result<(Vec<Arc<MediaFile>>, DuplicateStats)>>>,
+    pub scan_start_time: Option<std::time::Instant>,
 }
 
 impl App {
@@ -91,14 +99,15 @@ impl App {
         let settings_cache = settings.clone();
         let settings = Arc::new(RwLock::new(settings));
         let file_manager = Arc::new(RwLock::new(FileManager::new()));
-        let scanner = Arc::new(Scanner::with_cache().await?);
+        let scanner = Arc::new(Scanner::new());
         let config_dir =
             dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
+        let config_dir_clone = config_dir.clone();
         let organizer = Arc::new(FileOrganizer::new(config_dir).await?);
         let statistics = Statistics::new();
         let progress = Arc::new(RwLock::new(Progress::new()));
 
-        Ok(Self {
+        let app = Self {
             state: AppState::Dashboard,
             input_mode: InputMode::Normal,
             should_quit: false,
@@ -140,7 +149,27 @@ impl App {
             selected_filter_index: 0,
             filter_input: String::new(),
             last_undo_result: None,
-        })
+            folder_stats_tasks: AHashMap::new(),
+            folder_stats_in_progress: HashSet::new(),
+            scan_task: None,
+            scan_start_time: None,
+        };
+
+        let scanner_clone = Arc::clone(&app.scanner);
+        tokio::spawn(async move {
+            // Load scanner cache in background
+            if let Err(e) = scanner_clone.load_cache_async() {
+                error!("Failed to load scanner cache: {}", e);
+            }
+
+            // Load full organizer state in background
+            if (FileOrganizer::new(config_dir_clone).await).is_ok() {
+                // You'd need a way to update this in the app
+                info!("File organizer fully loaded");
+            }
+        });
+
+        Ok(app)
     }
 
     pub fn clear_messages(&mut self) {

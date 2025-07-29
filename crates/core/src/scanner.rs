@@ -1,9 +1,8 @@
 use chrono::Local;
 use color_eyre::eyre::Result;
-use rayon::iter::{ParallelBridge, ParallelIterator};
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::{path::Path, sync::atomic::AtomicUsize};
 use tokio::sync::{Mutex, RwLock};
 use tracing::{error, info};
@@ -19,7 +18,7 @@ use crate::file_cache::{CacheEntry, FileCache};
 
 #[derive(Debug, Clone)]
 pub struct Scanner {
-    is_scanning: Arc<Mutex<bool>>,
+    pub is_scanning: Arc<AtomicBool>,
     cache: Arc<Mutex<FileCache>>,
 }
 
@@ -33,7 +32,7 @@ impl Scanner {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            is_scanning: Arc::new(Mutex::new(false)),
+            is_scanning: Arc::new(AtomicBool::new(false)),
             cache: Arc::new(Mutex::new(FileCache::new())),
         }
     }
@@ -50,9 +49,41 @@ impl Scanner {
         });
 
         Ok(Self {
-            is_scanning: Arc::new(Mutex::new(false)),
+            is_scanning: Arc::new(AtomicBool::new(false)),
             cache: Arc::new(Mutex::new(cache)),
         })
+    }
+
+    /// Loads cache asynchronously in a background task.
+    ///
+    /// This function spawns a background task to load the cache without blocking
+    /// the current thread. The cache loading happens asynchronously, and any errors
+    /// are logged but don't prevent the function from returning successfully.
+    ///
+    /// # Errors
+    ///
+    /// This function currently always returns `Ok`, but the `Result` type is used
+    /// for future compatibility and consistency with other cache operations.
+    pub fn load_cache_async(&self) -> Result<()> {
+        let cache_arc = Arc::clone(&self.cache);
+
+        // Spawn background task to load cache
+        tokio::spawn(async move {
+            match FileCache::load().await {
+                Ok(loaded_cache) => {
+                    let mut cache = cache_arc.lock().await;
+                    *cache = loaded_cache;
+                    info!("Scanner cache loaded successfully in background");
+                    drop(cache);
+                }
+                Err(e) => {
+                    error!("Failed to load scanner cache: {}", e);
+                    // Continue with empty cache
+                }
+            }
+        });
+
+        Ok(())
     }
 
     #[allow(dead_code)]
@@ -113,52 +144,69 @@ impl Scanner {
 
         info!("Scanner: Cache loaded with {} entries", cache.len());
 
-        // Collect all paths first
+        // Update progress message
+        {
+            let mut prog = progress.write().await;
+            prog.message = "Discovering files...".to_string();
+        }
+
+        // Collect all paths first with progress updates
         let paths: Vec<PathBuf> = if recursive {
-            WalkDir::new(path)
-                .into_iter()
-                .par_bridge()
-                .filter_map(std::result::Result::ok)
-                .filter(|e| e.file_type().is_file())
-                .filter(|e| {
-                    if settings.skip_hidden_files && is_hidden_in_path(e.path()) {
-                        false // Skip this file
-                    } else {
-                        true // Include this file
+            let path_clone = path.to_path_buf();
+            let settings_clone = settings.clone();
+            let progress_clone = Arc::clone(&progress);
+
+            // Use spawn_blocking for the file system traversal
+            tokio::task::spawn_blocking(move || {
+                let mut paths = Vec::new();
+                let mut count = 0;
+
+                for entry in WalkDir::new(&path_clone)
+                    .into_iter()
+                    .filter_map(std::result::Result::ok)
+                {
+                    if entry.file_type().is_file() {
+                        if settings_clone.skip_hidden_files && is_hidden_in_path(entry.path()) {
+                            continue;
+                        }
+
+                        if scan_all_types || Self::is_media_file(entry.path()) {
+                            paths.push(entry.path().to_path_buf());
+                            count += 1;
+
+                            // Update progress every 100 files
+                            if count % 100 == 0 {
+                                if let Ok(mut prog) = progress_clone.try_write() {
+                                    prog.current = count;
+                                    prog.message = format!("Discovering files... {count}");
+                                }
+                                std::thread::yield_now();
+                            }
+                        }
                     }
-                })
-                .filter(|e| {
-                    if scan_all_types {
-                        true
-                    } else {
-                        Self::is_media_file(e.path())
-                    }
-                })
-                .map(|e| e.path().to_path_buf())
-                .collect()
+                }
+
+                paths
+            })
+            .await?
         } else {
             std::fs::read_dir(path)?
-                .par_bridge()
                 .filter_map(std::result::Result::ok)
                 .filter(|e| e.file_type().map(|ft| ft.is_file()).unwrap_or(false))
                 .map(|e| e.path())
-                .filter(|p| {
-                    if settings.skip_hidden_files && is_hidden_in_path(p) {
-                        false // Skip this file
-                    } else {
-                        true // Include this file
-                    }
-                })
+                .filter(|p| !(settings.skip_hidden_files && is_hidden_in_path(p)))
                 .filter(|p| if scan_all_types { true } else { Self::is_media_file(p) })
                 .collect()
         };
 
         info!("Scanner: Found {} files in {:?}", paths.len(), path);
 
-        // Update progress total
+        // Update progress total and message
         {
             let mut prog = progress.write().await;
             prog.total = paths.len();
+            prog.current = 0;
+            prog.message = "Processing files...".to_string();
         }
 
         drop(cache); // Release lock before processing
@@ -187,8 +235,6 @@ impl Scanner {
         // Save cache after processing
         if (self.cache.lock().await.save().await).is_ok() {
             tracing::debug!("Cache saved successfully");
-            // print also how many cache entries were saved
-            //tracing::debug!("Cache entries saved: {}", self.cache.lock().await.len());
         }
 
         Ok(files)
@@ -349,15 +395,20 @@ impl Scanner {
     /// - Hash calculation for files fails during duplicate detection
     /// - Cache operations fail when updating file hashes
     #[allow(clippy::cognitive_complexity)]
-    pub async fn find_duplicates(
+    pub async fn find_duplicates<F>(
         &self,
         files: &mut [Arc<MediaFile>],
-        _progress: Arc<RwLock<Progress>>,
-    ) -> Result<DuplicateStats> {
+        mut progress_callback: F,
+    ) -> Result<DuplicateStats>
+    where
+        F: FnMut(usize, Option<String>) + Send + 'static,
+    {
         info!(
             "Scanner: Using DuplicateDetector to find duplicates for {} files",
             files.len()
         );
+
+        progress_callback(0, Some("Calculating hashes for potential duplicates...".to_string()));
 
         // Create a new DuplicateDetector instance
         let detector = DuplicateDetector::new();
@@ -370,6 +421,8 @@ impl Scanner {
             "DuplicateDetector found {} duplicate groups",
             duplicate_stats.groups.len()
         );
+
+        progress_callback(0, Some("Updating cache...".to_string()));
 
         // Update cache with the calculated hashes
         if !duplicate_stats.is_empty() {
@@ -388,6 +441,7 @@ impl Scanner {
             }
 
             if cache_updated {
+                progress_callback(0, Some("Saving cache...".to_string()));
                 if let Err(e) = cache.save().await {
                     tracing::warn!("Failed to save cache after updating hashes: {}", e);
                 }
@@ -455,8 +509,26 @@ impl Scanner {
             prog.message = "Detecting duplicates...".to_string();
         }
 
+        let progress_clone = Arc::clone(&progress);
+        let progress_callback = move |current: usize, message: Option<String>| {
+            if let Ok(mut prog) = progress_clone.try_write() {
+                prog.current = current;
+                if let Some(msg) = message {
+                    prog.message = msg;
+                }
+            }
+        };
+
         // Find duplicates using DuplicateDetector
-        let duplicates = self.find_duplicates(&mut files, progress).await?;
+        let duplicates = self.find_duplicates(&mut files, progress_callback).await?;
+
+        self.set_scanning(false);
+
+        {
+            let mut prog = progress.write().await;
+            prog.current = prog.total;
+            prog.message = format!("Found {} duplicate groups", duplicates.len());
+        }
 
         info!("Scanner: Found {} duplicate groups", duplicates.len());
 
@@ -495,8 +567,13 @@ impl Scanner {
         path.to_str().is_some_and(|s| MEDIA_EXTENSIONS.is_match(s))
     }
 
-    pub async fn is_complete(&self) -> bool {
-        !*self.is_scanning.lock().await
+    #[must_use]
+    pub fn is_complete(&self) -> bool {
+        !self.is_scanning.load(Ordering::Acquire)
+    }
+
+    pub fn set_scanning(&self, scanning: bool) {
+        self.is_scanning.store(scanning, Ordering::Release);
     }
 }
 
@@ -538,7 +615,7 @@ mod tests {
     #[tokio::test]
     async fn test_scanner_creation() -> Result<()> {
         let scanner = Scanner::with_cache().await?;
-        assert!(scanner.is_complete().await);
+        assert!(scanner.is_complete());
         Ok(())
     }
 
@@ -727,10 +804,10 @@ mod tests {
     #[tokio::test]
     async fn test_find_duplicates_empty_list() -> Result<()> {
         let scanner = Scanner::with_cache().await?;
-        let progress = Arc::new(RwLock::new(Progress::default()));
         let mut files = vec![];
 
-        let duplicates = scanner.find_duplicates(&mut files, progress).await?;
+        let progress_callback = |_: usize, _: Option<String>| {};
+        let duplicates = scanner.find_duplicates(&mut files, progress_callback).await?;
         assert!(duplicates.is_empty());
         Ok(())
     }
@@ -753,7 +830,8 @@ mod tests {
             .scan_directory(root, false, progress.clone(), &settings, None)
             .await?;
 
-        let duplicates = scanner.find_duplicates(&mut files, progress).await?;
+        let progress_callback = |_: usize, _: Option<String>| {};
+        let duplicates = scanner.find_duplicates(&mut files, progress_callback).await?;
 
         // Check the duplicate stats
         assert_eq!(duplicates.total_groups, 1);

@@ -6,6 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use tracing::info;
 use visualvault_models::{FileType, MediaFile, MediaMetadata};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,13 +53,33 @@ impl FileCache {
     /// Returns an error if:
     /// - The cache directory cannot be determined
     /// - File I/O operations fail when reading the cache file
-    /// - The cache file contains invalid JSON that cannot be deserialized
+    /// - The cache file contains invalid data that cannot be deserialized
     pub async fn load() -> Result<Self> {
         let cache_path = Self::get_cache_path()?;
 
         if cache_path.exists() {
-            let data = tokio::fs::read_to_string(&cache_path).await?;
-            let cache: Self = serde_json::from_str(&data)?;
+            // Remove the cache if it's bigger than 100 MB
+            if let Ok(metadata) = cache_path.metadata() {
+                if metadata.len() > 100 * 1024 * 1024 {
+                    tracing::info!("Cache file is too large, removing: {}", cache_path.display());
+                    tokio::fs::remove_file(&cache_path).await?;
+                    return Ok(Self::new());
+                }
+            }
+
+            let cache = tokio::task::spawn_blocking(move || {
+                let start = std::time::Instant::now();
+                let contents = std::fs::read_to_string(&cache_path)?;
+                let cache: Self = serde_json::from_str(&contents)?;
+
+                info!(
+                    "Cache loaded in {:?} ({} entries)",
+                    start.elapsed(),
+                    cache.entries.len()
+                );
+                Ok::<_, color_eyre::eyre::Error>(cache)
+            })
+            .await??;
 
             // Check version compatibility
             if cache.version != Self::CURRENT_VERSION {
