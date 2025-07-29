@@ -89,6 +89,7 @@ ratatui = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+once_cell = "1.19"
 
 [dev-dependencies]
 dirs = { workspace = true }
