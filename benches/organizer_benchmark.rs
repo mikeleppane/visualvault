@@ -1,8 +1,7 @@
 #![allow(clippy::unwrap_used)]
 #![allow(clippy::expect_used)]
 #![allow(clippy::float_cmp)] // For comparing floats in tests
-#![allow(clippy::panic)]
-#![allow(clippy::significant_drop_tightening)]
+
 use chrono::Local;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::sync::Arc;
@@ -33,14 +32,17 @@ fn create_test_media_files(count: usize) -> Vec<Arc<MediaFile>> {
         .collect()
 }
 
-fn benchmark_organize_by_type(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-
-    let mut group = c.benchmark_group("organize_by_type");
+async fn run_organize(
+    dest: &std::path::Path,
+    files: Vec<Arc<MediaFile>>,
+    settings: Settings,
+) 
+fn benchmark_organize_by_type(c: &mut Criterion, rt: &Runtime) {
+    let mut group = c.benchmark_group("FileOrganizer::organize_by_type");
     group.sample_size(10);
 
-    for file_count in &[100, 500, 1000] {
-        group.bench_with_input(BenchmarkId::from_parameter(file_count), file_count, |b, &file_count| {
+    for &file_count in &[100usize, 500, 1000] {
+        group.bench_with_input(BenchmarkId::new("files", file_count), &file_count, |b, &file_count| {
             b.iter_batched(
                 || {
                     let temp_dir = TempDir::new().unwrap();
@@ -53,20 +55,7 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
                     (temp_dir, files, settings)
                 },
                 |(temp_dir, files, settings)| {
-                    rt.block_on(async {
-                        let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
-                        let progress = Arc::new(RwLock::new(Progress::default()));
-
-                        organizer
-                            .organize_files_with_duplicates(
-                                black_box(files),
-                                DuplicateStats::new(),
-                                &settings,
-                                progress,
-                            )
-                            .await
-                            .unwrap()
-                    })
+                    rt.block_on(run_organize(temp_dir.path(), files, settings))
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -76,17 +65,16 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
     group.finish();
 }
 
-fn benchmark_organize_modes(c: &mut Criterion) {
-    let rt = Runtime::new().unwrap();
-
-    let mut group = c.benchmark_group("organize_modes");
+fn benchmark_organize_modes(c: &mut Criterion, rt: &Runtime) {
+    let mut group = c.benchmark_group("FileOrganizer::organize_modes");
     group.sample_size(10);
 
     let modes = vec!["yearly", "monthly", "type"];
-    let files = create_test_media_files(1000);
+    let files = Arc::new(create_test_media_files(1000));
 
     for mode in modes {
-        group.bench_with_input(BenchmarkId::from_parameter(mode), &mode, |b, &mode| {
+        group.bench_with_input(BenchmarkId::new("mode", mode), &mode, |b, &mode| {
+            let files = files.clone(); 
             b.iter_batched(
                 || {
                     let temp_dir = TempDir::new().unwrap();
@@ -98,20 +86,7 @@ fn benchmark_organize_modes(c: &mut Criterion) {
                     (temp_dir, files.clone(), settings)
                 },
                 |(temp_dir, files, settings)| {
-                    rt.block_on(async {
-                        let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
-                        let progress = Arc::new(RwLock::new(Progress::default()));
-
-                        organizer
-                            .organize_files_with_duplicates(
-                                black_box(files),
-                                DuplicateStats::new(),
-                                &settings,
-                                progress,
-                            )
-                            .await
-                            .unwrap()
-                    })
+                    rt.block_on(run_organize(temp_dir.path(), files, settings))
                 },
                 criterion::BatchSize::SmallInput,
             );
@@ -121,5 +96,12 @@ fn benchmark_organize_modes(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, benchmark_organize_by_type, benchmark_organize_modes);
+fn run_benchmarks(c: &mut Criterion) {
+    let rt = Runtime::new().unwrap();
+    benchmark_organize_by_type(c, &rt);
+    benchmark_organize_modes(c, &rt);
+}
+
+criterion_group!(benches, run_benchmarks);
 criterion_main!(benches);
+
