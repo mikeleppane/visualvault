@@ -5,7 +5,7 @@
 use chrono::Local;
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::sync::Arc;
-use std::{hint::black_box, path::PathBuf};
+use std::{path::PathBuf};
 use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
@@ -13,6 +13,7 @@ use visualvault_config::Settings;
 use visualvault_core::FileOrganizer;
 use visualvault_models::{DuplicateStats, FileType, MediaFile};
 use visualvault_utils::Progress;
+use color_eyre::eyre::Result;
 
 fn create_test_media_files(count: usize) -> Vec<Arc<MediaFile>> {
     (0..count)
@@ -36,7 +37,20 @@ async fn run_organize(
     dest: &std::path::Path,
     files: Vec<Arc<MediaFile>>,
     settings: Settings,
-) 
+) -> Result<usize> {
+    let organizer = FileOrganizer::new(dest.to_path_buf()).await?;
+
+    // Для тесту передаємо пусті duplicates
+    let duplicates = DuplicateStats::default();
+    let progress = Arc::new(RwLock::new(Progress::default()));
+
+    let result = organizer
+        .organize_files_with_duplicates(files, duplicates, &settings, progress)
+        .await?;
+
+    Ok(result.files_organized)
+}
+
 fn benchmark_organize_by_type(c: &mut Criterion, rt: &Runtime) {
     let mut group = c.benchmark_group("FileOrganizer::organize_by_type");
     group.sample_size(10);
@@ -69,12 +83,13 @@ fn benchmark_organize_modes(c: &mut Criterion, rt: &Runtime) {
     let mut group = c.benchmark_group("FileOrganizer::organize_modes");
     group.sample_size(10);
 
-    let modes = vec!["yearly", "monthly", "type"];
     let files = Arc::new(create_test_media_files(1000));
+
+    let modes = vec!["yearly", "monthly", "type"];
 
     for mode in modes {
         group.bench_with_input(BenchmarkId::new("mode", mode), &mode, |b, &mode| {
-            let files = files.clone(); 
+            let files = files.clone();
             b.iter_batched(
                 || {
                     let temp_dir = TempDir::new().unwrap();
@@ -83,7 +98,7 @@ fn benchmark_organize_modes(c: &mut Criterion, rt: &Runtime) {
                         organize_by: mode.to_string(),
                         ..Default::default()
                     };
-                    (temp_dir, files.clone(), settings)
+                    (temp_dir, (*files).clone(), settings)  // <- РОЗПАКОВКА Arc
                 },
                 |(temp_dir, files, settings)| {
                     rt.block_on(run_organize(temp_dir.path(), files, settings))
