@@ -452,20 +452,44 @@ fn draw_recent_activity(f: &mut Frame, area: Rect, app: &App) {
     let spinner_idx = (chrono::Local::now().timestamp_millis() / 100) as usize % spinner_frames.len();
 
     if app.state == AppState::Scanning {
-        let progress = app.progress.try_read();
-        if let Ok(progress) = progress {
+        if let Some((_, progress_msg)) = app.get_scan_progress() {
+            let elapsed = app.scan_start_time.map(|start| start.elapsed()).unwrap_or_default();
+
+            // Animated spinner
+            let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+            let spinner_idx = (elapsed.as_millis() / 100) as usize % spinner_frames.len();
+
             activities.push(ListItem::new(Line::from(vec![
                 Span::styled(
                     format!("{} ", spinner_frames[spinner_idx]),
                     Style::default().fg(ACCENT_COLOR).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled("Scanning in progress... ", Style::default().fg(ACCENT_COLOR)),
+                Span::styled("Scanning: ", Style::default().fg(ACCENT_COLOR)),
                 Span::styled(
-                    format!("{}", progress.current),
+                    progress_msg,
                     Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
                 ),
-                Span::raw(" files found"),
+                Span::styled(
+                    format!(" • {}", format_duration(elapsed)),
+                    Style::default().fg(MUTED_COLOR).add_modifier(Modifier::DIM),
+                ),
             ])));
+
+            // Add path being scanned
+            if let Ok(settings) = app.settings.try_read() {
+                if let Some(source) = &settings.source_folder {
+                    let folder_name = source.file_name().and_then(|n| n.to_str()).unwrap_or("Unknown");
+
+                    activities.push(ListItem::new(Line::from(vec![
+                        Span::raw("     "),
+                        Span::styled("📁 ", Style::default().fg(MUTED_COLOR)),
+                        Span::styled(
+                            format!("Scanning: {folder_name}"),
+                            Style::default().fg(MUTED_COLOR).add_modifier(Modifier::ITALIC),
+                        ),
+                    ])));
+                }
+            }
         }
     } else if app.state == AppState::Organizing {
         let progress = app.progress.try_read();

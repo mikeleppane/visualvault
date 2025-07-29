@@ -29,7 +29,7 @@ const ERROR_COLOR: Color = Color::Rgb(255, 85, 85); // Red
 const MUTED_COLOR: Color = Color::Rgb(98, 114, 164); // Gray
 const BACKGROUND_ALT: Color = Color::Rgb(30, 30, 46); // Dark background
 const BACKGROUND_MAIN: Color = Color::Rgb(24, 24, 37); // Main background
-const VERSION: &str = "0.7.0"; // Updated version
+const VERSION: &str = "0.7.1"; // Updated version
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     // Draw main background

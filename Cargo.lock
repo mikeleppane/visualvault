@@ -2464,7 +2464,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "visualvault"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "chrono",
  "codspeed-criterion-compat",
@@ -2490,7 +2490,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-app"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ahash",
  "chrono",
@@ -2515,7 +2515,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-config"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "color-eyre",
  "dirs",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-core"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ahash",
  "chrono",
@@ -2553,7 +2553,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-models"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ahash",
  "chrono",
@@ -2565,7 +2565,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-ui"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "ahash",
  "chrono",
@@ -2583,7 +2583,7 @@ dependencies = [
 
 [[package]]
 name = "visualvault-utils"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "chrono",
  "regex",

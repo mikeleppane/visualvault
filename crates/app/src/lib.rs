@@ -9,6 +9,7 @@ pub use state::App;
 
 use color_eyre::eyre::Result;
 use crossterm::event::KeyEvent;
+use tracing::info;
 use visualvault_models::AppState;
 
 impl App {
@@ -20,7 +21,13 @@ impl App {
     /// - Scanner cache initialization fails
     /// - Any other component initialization fails
     pub async fn new() -> Result<Self> {
-        state::App::init().await
+        // time the initialization process
+        info!("Starting application initialization...");
+        let start_time = std::time::Instant::now();
+        let app = state::App::init().await;
+
+        info!("Application initialized in {} ms", start_time.elapsed().as_millis());
+        app
     }
 
     /// Handles keyboard input events and updates application state accordingly.
@@ -56,6 +63,8 @@ impl App {
     pub async fn on_tick(&mut self) -> Result<()> {
         self.update_progress().await?;
         self.update_folder_stats_if_needed();
+        self.check_scan_completion().await?;
+        self.check_folder_stats_completion().await;
         self.check_operation_completion().await?;
         Ok(())
     }
