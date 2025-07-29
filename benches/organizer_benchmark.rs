@@ -59,7 +59,7 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::new("files", file_count), &file_count, |b, &file_count| {
             b.iter_batched(
                 || {
-                :    let temp_dir = TempDir::new().unwrap();
+                    let temp_dir = TempDir::new().unwrap(); // 🔧 Додано
                     let files = create_test_media_files(file_count);
                     let settings = Settings {
                         destination_folder: Some(temp_dir.path().to_path_buf()),
@@ -76,6 +76,7 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
 
     group.finish();
 }
+
 
 fn benchmark_organize_modes(c: &mut Criterion) {
     let mut group = c.benchmark_group("FileOrganizer::organize_modes");
