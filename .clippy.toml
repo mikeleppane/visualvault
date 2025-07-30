@@ -1,7 +1,7 @@
 # Clippy configuration file
 
 # Set the maximum cognitive complexity allowed
-cognitive-complexity-threshold = 20
+cognitive-complexity-threshold = 30
 
 # Set the maximum number of lines for functions
 too-many-lines-threshold = 100

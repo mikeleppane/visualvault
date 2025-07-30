@@ -47,6 +47,12 @@ async fn setup_test_files(root: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn create_test_scanner() -> Result<Scanner> {
+    let scanner = Scanner::new();
+    scanner.init_in_memory_cache().await?;
+    Ok(scanner)
+}
+
 #[tokio::test]
 async fn test_scanner_finds_all_media_files() -> Result<()> {
     let temp_dir = TempDir::new()?;
@@ -59,7 +65,7 @@ async fn test_scanner_finds_all_media_files() -> Result<()> {
         ..Default::default()
     };
 
-    let scanner = Scanner::with_cache().await?;
+    let scanner = create_test_scanner().await?;
     let progress = Arc::new(RwLock::new(Progress::default()));
 
     let files = scanner.scan_directory(root, true, progress, &settings, None).await?;
@@ -99,7 +105,7 @@ async fn test_scanner_respects_hidden_files_setting() -> Result<()> {
         ..Default::default()
     };
 
-    let scanner = Scanner::with_cache().await?;
+    let scanner = create_test_scanner().await?;
     let progress = Arc::new(RwLock::new(Progress::default()));
 
     let files = scanner.scan_directory(root, true, progress, &settings, None).await?;
@@ -118,7 +124,7 @@ async fn test_duplicate_detection() -> Result<()> {
     setup_test_files(root).await?;
 
     let settings = Settings::default();
-    let scanner = Scanner::with_cache().await?;
+    let scanner = create_test_scanner().await?;
     let progress = Arc::new(RwLock::new(Progress::default()));
 
     // Scan for files and duplicates
@@ -140,6 +146,79 @@ async fn test_duplicate_detection() -> Result<()> {
     assert_eq!(stats.groups.len(), 1, "Should find 1 duplicate group");
     assert_eq!(stats.total_duplicates, 2, "Should find 2 duplicate files");
     assert_eq!(stats.total_wasted_space, 2 * 1024 * 1024, "Should waste 2MB");
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_scanner_non_recursive_scan() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let root = temp_dir.path();
+
+    // Create files in root and subdirectories
+    create_test_file(&root.join("root_photo.jpg"), b"ROOT_JPG", 1024 * 1024).await?;
+    create_test_file(&root.join("root_video.mp4"), b"ROOT_MP4", 2 * 1024 * 1024).await?;
+    create_test_file(&root.join("subdir/nested_photo.jpg"), b"NESTED_JPG", 1024 * 1024).await?;
+    create_test_file(&root.join("subdir/deep/very_nested.png"), b"DEEP_PNG", 512 * 1024).await?;
+
+    let settings = Settings {
+        recurse_subfolders: false, // This is the key setting
+        skip_hidden_files: false,
+        ..Default::default()
+    };
+
+    let scanner = create_test_scanner().await?;
+    let progress = Arc::new(RwLock::new(Progress::default()));
+
+    // Use recursive=false in scan_directory
+    let files = scanner.scan_directory(root, false, progress, &settings, None).await?;
+
+    // Should only find files in root directory
+    assert_eq!(files.len(), 2, "Should only find 2 files in root directory");
+
+    // Verify all files are in root (no subdirectory files)
+    for file in &files {
+        assert_eq!(
+            file.path.parent().unwrap(),
+            root,
+            "All files should be directly in root directory"
+        );
+    }
+
+    // Verify we got the expected files
+    let file_names: Vec<String> = files.iter().map(|f| f.name.to_string()).collect();
+    assert!(file_names.contains(&"root_photo.jpg".to_string()));
+    assert!(file_names.contains(&"root_video.mp4".to_string()));
+    assert!(!file_names.contains(&"nested_photo.jpg".to_string()));
+    assert!(!file_names.contains(&"very_nested.png".to_string()));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_scanner_handles_empty_directories() -> Result<()> {
+    let temp_dir = TempDir::new()?;
+    let root = temp_dir.path();
+
+    // Create empty directories
+    fs::create_dir_all(root.join("empty1")).await?;
+    fs::create_dir_all(root.join("empty2/nested/deep")).await?;
+
+    let settings = Settings {
+        recurse_subfolders: true,
+        ..Default::default()
+    };
+
+    let scanner = create_test_scanner().await?;
+    let progress = Arc::new(RwLock::new(Progress::default()));
+
+    let (files, dups) = scanner
+        .scan_directory_with_duplicates(root, true, progress, &settings, None)
+        .await?;
+
+    // Should find no files in empty directories
+    assert_eq!(files.len(), 0, "Should find no files in empty directories");
+    assert!(dups.is_empty(), "Should find no duplicates in empty directories");
 
     Ok(())
 }

@@ -158,7 +158,7 @@ impl App {
         let scanner_clone = Arc::clone(&app.scanner);
         tokio::spawn(async move {
             // Load scanner cache in background
-            if let Err(e) = scanner_clone.load_cache_async() {
+            if let Err(e) = scanner_clone.init_cache().await {
                 error!("Failed to load scanner cache: {}", e);
             }
 

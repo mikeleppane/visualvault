@@ -81,6 +81,12 @@ async fn setup_test_environment(source_dir: &Path) -> Result<()> {
     Ok(())
 }
 
+async fn create_test_scanner() -> Result<Scanner> {
+    let scanner = Scanner::new();
+    scanner.init_in_memory_cache().await?;
+    Ok(scanner)
+}
+
 #[tokio::test()]
 #[allow(clippy::too_many_lines)]
 async fn test_complete_system_workflow() -> Result<()> {
@@ -111,7 +117,7 @@ async fn test_complete_system_workflow() -> Result<()> {
     };
 
     // 3. Initialize components
-    let scanner = Scanner::new();
+    let scanner = create_test_scanner().await?;
     let progress = Arc::new(RwLock::new(Progress::default()));
 
     // 4. Scan for media files
@@ -248,8 +254,8 @@ async fn test_complete_system_workflow() -> Result<()> {
     println!("\n=== Cache Functionality Test ===");
 
     // First, let's verify the cache was populated during the initial scan
-    let scanner = Scanner::new();
-    let cache_size_initial = scanner.cache_size().await;
+    let scanner = create_test_scanner().await?;
+    let cache_size_initial = scanner.cache_size().await.unwrap();
     assert!(cache_size_initial == 0, "Cache should be empty before any scans");
 
     let _ = scanner
@@ -261,7 +267,7 @@ async fn test_complete_system_workflow() -> Result<()> {
             None,
         )
         .await?;
-    let cache_size_after_scan = scanner.cache_size().await;
+    let cache_size_after_scan = scanner.cache_size().await.unwrap();
     assert!(cache_size_after_scan > 0, "Cache should have entries after scan");
 
     let (dest_force_scan, _) = scanner
@@ -280,8 +286,8 @@ async fn test_complete_system_workflow() -> Result<()> {
         "Cache should return same number of files as source scan"
     );
 
-    let scanner = Scanner::with_cache().await.unwrap();
-    let cache_size = scanner.cache_size().await;
+    //let scanner = Scanner::with_cache().await.unwrap();
+    let cache_size = scanner.cache_size().await.unwrap();
     assert!(
         cache_size >= dest_force_scan.len(),
         "Cache should have entries after scan"

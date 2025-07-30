@@ -23,6 +23,7 @@ walkdir = { workspace = true }
 rayon = { workspace = true }
 thiserror = { workspace = true }
 uuid = { workspace = true }
+sqlx = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.20"
