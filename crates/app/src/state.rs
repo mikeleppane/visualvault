@@ -7,12 +7,13 @@ use tokio::{sync::RwLock, task::JoinHandle};
 use tracing::error;
 use tracing::info;
 use visualvault_config::Settings;
+use visualvault_core::DatabaseCache;
 use visualvault_core::{DuplicateDetector, FileManager, FileOrganizer, Scanner};
 use visualvault_models::{
     AppState, DuplicateFocus, DuplicateStats, EditingField, FilterFocus, FilterSet, InputMode, MediaFile,
     OrganizeResult, ScanResult, Statistics,
 };
-use visualvault_utils::{FolderStats, Progress};
+use visualvault_utils::{FolderStats, Progress, create_cache_path};
 
 pub struct App {
     // Core state
@@ -91,6 +92,12 @@ impl App {
     /// Returns an error if:
     /// - Settings cannot be loaded from the configuration file
     /// - Scanner cache initialization fails
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - The cache path cannot be converted to a string
+    /// - The cache path creation fails during background initialization
     pub async fn init() -> Result<Self> {
         let mut duplicate_list_state = ListState::default();
         duplicate_list_state.select(Some(0));
@@ -99,7 +106,8 @@ impl App {
         let settings_cache = settings.clone();
         let settings = Arc::new(RwLock::new(settings));
         let file_manager = Arc::new(RwLock::new(FileManager::new()));
-        let scanner = Arc::new(Scanner::new());
+        let database_cache = DatabaseCache::new_uninit();
+        let scanner = Arc::new(Scanner::new(database_cache));
         let config_dir =
             dirs::config_dir().ok_or_else(|| color_eyre::eyre::eyre!("Could not find config directory"))?;
         let config_dir_clone = config_dir.clone();
@@ -156,11 +164,20 @@ impl App {
         };
 
         let scanner_clone = Arc::clone(&app.scanner);
+        #[allow(clippy::expect_used)]
         tokio::spawn(async move {
             // Load scanner cache in background
-            if let Err(e) = scanner_clone.load_cache_async() {
-                error!("Failed to load scanner cache: {}", e);
-            }
+            let cache_path = create_cache_path("visualvault", "cache.db")
+                .await
+                .expect("Failed to create cache path");
+            //cache_path to &str
+            let cache_path_str = cache_path.to_str().expect("Failed to convert cache path to string");
+            let database_cache = DatabaseCache::new(cache_path_str)
+                .await
+                .expect("Failed to initialize database cache");
+            scanner_clone.set_cache(database_cache).await.unwrap_or_else(|e| {
+                error!("Failed to initialize scanner cache: {}", e);
+            });
 
             // Load full organizer state in background
             if (FileOrganizer::new(config_dir_clone).await).is_ok() {

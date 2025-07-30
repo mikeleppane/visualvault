@@ -5,4 +5,5 @@ lcov.info
 *.profdata
 target/llvm-cov/
 coverage/
-
+*.snap.new
+logs/

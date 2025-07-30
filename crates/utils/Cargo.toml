@@ -9,3 +9,7 @@ license.workspace = true
 visualvault-models = { workspace = true }
 chrono = { workspace = true }
 regex = { workspace = true }
+tracing = { workspace = true }
+color-eyre = { workspace = true }
+dirs = { workspace = true }
+tokio = { workspace = true }

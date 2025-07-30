@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::{path::Path, sync::atomic::AtomicUsize};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::RwLock;
 use tracing::{error, info};
 use visualvault_config::Settings;
 use visualvault_models::{DuplicateStats, FilterSet, MediaFile};
@@ -13,82 +13,59 @@ use visualvault_utils::datetime::system_time_to_datetime;
 use visualvault_utils::media_types::{MEDIA_EXTENSIONS, determine_file_type};
 use walkdir::WalkDir;
 
-use crate::DuplicateDetector;
-use crate::file_cache::{CacheEntry, FileCache};
+use crate::database_cache::CacheEntry;
+use crate::{Cache, DuplicateDetector};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Scanner {
     pub is_scanning: Arc<AtomicBool>,
-    cache: Arc<Mutex<FileCache>>,
-}
-
-impl Default for Scanner {
-    fn default() -> Self {
-        Self::new()
-    }
+    cache: Arc<RwLock<Box<dyn Cache>>>,
 }
 
 impl Scanner {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new<C: Cache + 'static>(cache: C) -> Self {
         Self {
             is_scanning: Arc::new(AtomicBool::new(false)),
-            cache: Arc::new(Mutex::new(FileCache::new())),
+            cache: Arc::new(RwLock::new(Box::new(cache))),
         }
     }
-    /// Creates a new Scanner instance with cache support.
+
+    /// Initializes the scanner's cache by loading data from the database.
     ///
     /// # Errors
     ///
-    /// This function currently always returns `Ok`, but the `Result` type is used
-    /// for future compatibility in case cache loading might fail.
-    pub async fn with_cache() -> Result<Self> {
-        let cache = FileCache::load().await.unwrap_or_else(|_| {
-            tracing::warn!("Failed to load cache, starting fresh");
-            FileCache::new()
-        });
-
-        Ok(Self {
-            is_scanning: Arc::new(AtomicBool::new(false)),
-            cache: Arc::new(Mutex::new(cache)),
-        })
-    }
-
-    /// Loads cache asynchronously in a background task.
-    ///
-    /// This function spawns a background task to load the cache without blocking
-    /// the current thread. The cache loading happens asynchronously, and any errors
-    /// are logged but don't prevent the function from returning successfully.
-    ///
-    /// # Errors
-    ///
-    /// This function currently always returns `Ok`, but the `Result` type is used
-    /// for future compatibility and consistency with other cache operations.
-    pub fn load_cache_async(&self) -> Result<()> {
-        let cache_arc = Arc::clone(&self.cache);
-
-        // Spawn background task to load cache
-        tokio::spawn(async move {
-            match FileCache::load().await {
-                Ok(loaded_cache) => {
-                    let mut cache = cache_arc.lock().await;
-                    *cache = loaded_cache;
-                    info!("Scanner cache loaded successfully in background");
-                    drop(cache);
-                }
-                Err(e) => {
-                    error!("Failed to load scanner cache: {}", e);
-                    // Continue with empty cache
-                }
-            }
-        });
-
+    /// Returns an error if the cache cannot be initialized or if database access fails.
+    pub async fn set_cache<C: Cache + 'static>(&self, cache: C) -> Result<()> {
+        let mut cache_lock = self.cache.write().await;
+        *cache_lock = Box::new(cache);
+        drop(cache_lock); // Explicitly drop the lock to release it
         Ok(())
     }
+    /*
+    /// Initializes the scanner's cache using in-memory storage.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the in-memory cache cannot be initialized.
+    pub async fn init_in_memory_cache(&self) -> Result<()> {
+        let cache = DatabaseCache::new(true).await?;
+        {
+            let mut cache_lock = self.cache.write().await;
+            *cache_lock = cache;
+        }
+        Ok(())
+    }
+    */
 
-    #[allow(dead_code)]
-    pub async fn cache_size(&self) -> usize {
-        self.cache.lock().await.len()
+    /// Returns the current size of the cache.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cache size cannot be determined.
+    pub async fn cache_size(&self) -> Result<usize> {
+        let cache_lock = self.cache.read().await;
+        cache_lock.len().await
     }
 
     /// Scans a directory for media files and returns a list of `MediaFile` objects.
@@ -125,24 +102,24 @@ impl Scanner {
 
         let scan_all_types = matches!(settings.organize_by.as_str(), "type");
 
+        // Get cache stats
+        let cache_stats = {
+            let cache_lock = self.cache.read().await;
+            cache_lock.get_stats().await?
+        };
         info!(
-            "Scanner: Scanning {} files in {:?} (recursive: {}, all types: {}, organize by: {})",
-            if recursive { "all" } else { "top-level" },
-            path,
-            recursive,
-            scan_all_types,
-            settings.organize_by
+            "Scanner: Cache has {} entries ({} with hashes)",
+            cache_stats.total_entries, cache_stats.entries_with_hash
         );
 
-        // Load cache at the start
-        let mut cache = self.cache.lock().await;
-
-        // Remove stale entries periodically
-        if cache.len() > 1000 {
-            cache.remove_stale_entries().await;
+        // Remove stale entries if cache is large
+        if cache_stats.total_entries > 10000 {
+            let removed = {
+                let cache_lock = self.cache.read().await;
+                cache_lock.remove_stale_entries().await?
+            };
+            info!("Scanner: Removed {} stale cache entries", removed);
         }
-
-        info!("Scanner: Cache loaded with {} entries", cache.len());
 
         // Update progress message
         {
@@ -209,8 +186,6 @@ impl Scanner {
             prog.message = "Processing files...".to_string();
         }
 
-        drop(cache); // Release lock before processing
-
         // Process files with cache support
         let files = if settings.parallel_processing && settings.worker_threads > 1 {
             self.process_files_parallel(&paths, progress, settings, filter_set)
@@ -230,11 +205,6 @@ impl Scanner {
             for (file_type, count) in type_counts {
                 info!("  {}: {} files", file_type, count);
             }
-        }
-
-        // Save cache after processing
-        if (self.cache.lock().await.save().await).is_ok() {
-            tracing::debug!("Cache saved successfully");
         }
 
         Ok(files)
@@ -352,9 +322,8 @@ impl Scanner {
         let modified =
             system_time_to_datetime(metadata.modified()).map_or_else(Local::now, |dt| dt.with_timezone(&Local));
 
-        // Try cache lookup with minimal locking
-        let cache = self.cache.lock().await;
-        if let Some(entry) = cache.get(path, size, &modified) {
+        let cache_lock = self.cache.read().await;
+        if let Some(entry) = cache_lock.get(path, size, &modified).await? {
             let file_type = determine_file_type(&entry.extension);
             let created =
                 system_time_to_datetime(metadata.created()).map_or_else(|| modified, |dt| dt.with_timezone(&Local));
@@ -362,17 +331,17 @@ impl Scanner {
             tracing::trace!("Cache hit for: {}", path.display());
             return Ok(entry.to_media_file(file_type, created));
         }
-        drop(cache); // Explicitly drop the lock
+        drop(cache_lock); // Release the lock before processing
 
         // Cache miss - process file
         tracing::trace!("Cache miss for: {}", path.display());
         let file = Self::process_file(path, &metadata, size, modified);
 
         // Update cache asynchronously
-        {
-            let mut cache = self.cache.lock().await;
-            cache.insert(path.to_path_buf(), CacheEntry::from(&file));
-        }
+        let entry = CacheEntry::from(&file);
+        let cache_lock = self.cache.read().await;
+        cache_lock.insert(path.to_path_buf(), entry).await?;
+        drop(cache_lock);
 
         Ok(file)
     }
@@ -426,26 +395,30 @@ impl Scanner {
 
         // Update cache with the calculated hashes
         if !duplicate_stats.is_empty() {
-            let mut cache = self.cache.lock().await;
-            let mut cache_updated = false;
+            progress_callback(0, Some("Updating hash cache...".to_string()));
 
-            for file in files.iter() {
+            progress_callback(0, Some("Updating hash cache...".to_string()));
+
+            let mut updates = 0;
+            for (idx, file) in files.iter().enumerate() {
                 if let Some(hash) = &file.hash {
-                    if let Some(entry) = cache.get_mut(&file.path, file.size, &file.modified) {
-                        if entry.hash.is_none() {
-                            entry.hash = Some(hash.to_string());
-                            cache_updated = true;
+                    // Only update if we don't have a hash in cache
+                    let cache_lock: tokio::sync::RwLockReadGuard<'_, Box<dyn Cache>> = self.cache.read().await;
+                    if let Some(existing) = cache_lock.get(&file.path, file.size, &file.modified).await? {
+                        if existing.hash.is_none() {
+                            cache_lock.update_hash(&file.path, hash).await?;
+                            updates += 1;
                         }
                     }
+                    drop(cache_lock);
+                }
+
+                if idx % 100 == 0 {
+                    progress_callback(idx, Some(format!("Updated {updates} hashes...")));
                 }
             }
 
-            if cache_updated {
-                progress_callback(0, Some("Saving cache...".to_string()));
-                if let Err(e) = cache.save().await {
-                    tracing::warn!("Failed to save cache after updating hashes: {}", e);
-                }
-            }
+            info!("Scanner: Updated {} hashes in cache", updates);
         }
 
         info!("Scanner: Converted to {} duplicate groups", duplicate_stats.len());
@@ -598,6 +571,8 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::panic_in_result_fn)]
 
+    use crate::DatabaseCache;
+
     use super::*;
     use tempfile::TempDir;
     use tokio::fs;
@@ -614,15 +589,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_scanner_creation() -> Result<()> {
-        let scanner = Scanner::with_cache().await?;
+        let database_cache = DatabaseCache::new(":memory:")
+            .await
+            .expect("Failed to initialize database cache");
+        let scanner = Scanner::new(database_cache);
         assert!(scanner.is_complete());
         Ok(())
+    }
+
+    async fn create_test_scanner() -> Result<Scanner> {
+        let database_cache = DatabaseCache::new(":memory:")
+            .await
+            .expect("Failed to initialize database cache");
+        let scanner = Scanner::new(database_cache);
+        Ok(scanner)
     }
 
     #[tokio::test]
     async fn test_scan_empty_directory() -> Result<()> {
         let temp_dir = TempDir::new()?;
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -636,7 +622,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_scan_non_existent_directory() -> Result<()> {
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -662,7 +648,7 @@ mod tests {
         // Create files in subdirectory (should be ignored in non-recursive scan)
         create_test_file(&root.join("subdir/image3.jpg"), b"JPG_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings {
             recurse_subfolders: false,
@@ -687,7 +673,7 @@ mod tests {
         create_test_file(&root.join("subdir1/subdir2/video1.mp4"), b"MP4_DATA").await?;
         create_test_file(&root.join("subdir3/image3.gif"), b"GIF_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings {
             recurse_subfolders: true,
@@ -717,7 +703,7 @@ mod tests {
         create_test_file(&root.join(".hidden.jpg"), b"JPG_DATA").await?;
         create_test_file(&root.join(".hidden_dir/image.jpg"), b"JPG_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         // Test with skip_hidden_files = true
@@ -756,7 +742,7 @@ mod tests {
         create_test_file(&root.join("medium.jpg"), &vec![0; 2 * 1024 * 1024]).await?; // 2MB
         create_test_file(&root.join("large.jpg"), &vec![0; 5 * 1024 * 1024]).await?; // 5MB
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -781,7 +767,7 @@ mod tests {
 
         create_test_file(&root.join("test.jpg"), b"JPG_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -803,7 +789,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_duplicates_empty_list() -> Result<()> {
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let mut files = vec![];
 
         let progress_callback = |_: usize, _: Option<String>| {};
@@ -822,7 +808,7 @@ mod tests {
         create_test_file(&root.join("file2.jpg"), b"DUPLICATE_DATA").await?;
         create_test_file(&root.join("unique.jpg"), b"UNIQUE_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -872,7 +858,7 @@ mod tests {
         create_test_file(&root.join("unique1.jpg"), b"UNIQUE1").await?;
         create_test_file(&root.join("unique2.jpg"), b"UNIQUE2").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -897,7 +883,7 @@ mod tests {
             create_test_file(&root.join(format!("image{i}.jpg")), b"DATA").await?;
         }
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         // Test sequential processing
@@ -981,7 +967,7 @@ mod tests {
             create_test_file(&root.join(format!("file{i}.jpg")), b"DATA").await?;
         }
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
         let settings = Settings::default();
 
@@ -1038,7 +1024,7 @@ mod tests {
         create_test_file(&root.join("no_extension"), b"NO_EXT").await?;
         create_test_file(&root.join("executable.exe"), b"EXE_DATA").await?;
 
-        let scanner = Scanner::new();
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         // Test with organize by type mode - should scan ALL supported file types
@@ -1145,7 +1131,7 @@ mod tests {
         create_test_file(&root.join("file-with-dashes.mp4"), b"MP4_DATA").await?;
         create_test_file(&root.join("file_with_underscores.zip"), b"ZIP_DATA").await?;
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         let settings = Settings {
@@ -1203,7 +1189,7 @@ mod tests {
             }
         }
 
-        let scanner = Scanner::with_cache().await?;
+        let scanner = create_test_scanner().await?;
         let progress = Arc::new(RwLock::new(Progress::default()));
 
         // Test with type organization
