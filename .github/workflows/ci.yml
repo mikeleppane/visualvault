@@ -160,7 +160,7 @@ jobs:
           key: ${{ runner.os }}-cargo-build-coverage-${{ hashFiles('**/Cargo.lock') }}
       
       - name: Generate code coverage
-        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info --verbose -E 'not test(test_check_and_cleanup)'
+        run: cargo llvm-cov nextest --all-features --workspace --lcov --output-path lcov.info --verbose
       
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3

@@ -64,6 +64,7 @@ smallvec = { version = "1.15.1", features = [
     "write",
 ] }
 sqlx = { version = "0.8.6", features = ["chrono", "runtime-tokio", "sqlite"] }
+async-trait = "0.1.88"
 
 [package]
 name = "visualvault"

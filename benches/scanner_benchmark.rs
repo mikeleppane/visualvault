@@ -12,6 +12,7 @@ use tempfile::TempDir;
 use tokio::runtime::Runtime;
 use tokio::sync::RwLock;
 use visualvault_config::Settings;
+use visualvault_core::DatabaseCache;
 use visualvault_core::Scanner;
 use visualvault_utils::Progress;
 
@@ -38,7 +39,10 @@ fn benchmark_scanner(c: &mut Criterion) {
                 },
                 |temp_dir| {
                     rt.block_on(async {
-                        let scanner = Scanner::new();
+                        let database_cache = DatabaseCache::new(":memory:")
+                            .await
+                            .expect("Failed to initialize database cache");
+                        let scanner = Scanner::new(database_cache);
                         let progress = Arc::new(RwLock::new(Progress::default()));
                         let settings = Settings::default();
 
@@ -72,7 +76,10 @@ fn benchmark_scanner_parallel(c: &mut Criterion) {
             |b, &thread_count| {
                 b.iter(|| {
                     rt.block_on(async {
-                        let scanner = Scanner::new();
+                        let database_cache = DatabaseCache::new(":memory:")
+                            .await
+                            .expect("Failed to initialize database cache");
+                        let scanner = Scanner::new(database_cache);
                         let progress = Arc::new(RwLock::new(Progress::default()));
                         let settings = Settings {
                             parallel_processing: true,

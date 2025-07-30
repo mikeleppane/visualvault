@@ -11,6 +11,7 @@ use std::path::Path;
 use tempfile::TempDir;
 use tokio::fs;
 use visualvault_config::Settings;
+use visualvault_core::DatabaseCache;
 use visualvault_core::{DuplicateDetector, FileOrganizer, Scanner};
 use visualvault_models::FileType;
 use visualvault_utils::Progress;
@@ -82,8 +83,10 @@ async fn setup_test_environment(source_dir: &Path) -> Result<()> {
 }
 
 async fn create_test_scanner() -> Result<Scanner> {
-    let scanner = Scanner::new();
-    scanner.init_in_memory_cache().await?;
+    let database_cache = DatabaseCache::new(":memory:")
+        .await
+        .expect("Failed to initialize database cache");
+    let scanner = Scanner::new(database_cache);
     Ok(scanner)
 }
 

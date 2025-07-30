@@ -47,23 +47,7 @@ impl DatabaseCache {
     /// - The cache directory cannot be created
     /// - The database connection cannot be established
     /// - The database schema initialization fails
-    pub async fn new(use_in_memory: bool) -> Result<Self> {
-        let cache_path = if use_in_memory {
-            info!("Using in-memory database cache");
-            ":memory:".to_string()
-        } else {
-            let cache_path = Self::get_cache_path()?;
-            let cache_dir = cache_path
-                .parent()
-                .ok_or_else(|| color_eyre::eyre::eyre!("Invalid cache path"))?;
-
-            tokio::fs::create_dir_all(cache_dir).await?;
-            cache_path
-                .to_str()
-                .ok_or_else(|| color_eyre::eyre::eyre!("Failed to convert cache path to string"))?
-                .to_string()
-        };
-
+    pub async fn new(cache_path: &str) -> Result<Self> {
         // Create connection string
         let db_url = format!("sqlite:{cache_path}");
         info!("Initializing database cache at: {}", db_url);
@@ -674,11 +658,13 @@ mod tests {
     #![allow(clippy::panic_in_result_fn)]
     use std::sync::Arc;
 
+    use visualvault_utils::create_cache_path;
+
     use super::*;
 
     /// Helper to create a test database cache
     async fn create_test_cache() -> Result<DatabaseCache> {
-        DatabaseCache::new(true).await // Use in-memory database for tests
+        DatabaseCache::new(":memory:").await // Use in-memory database for tests
     }
 
     /// Helper to create a test cache entry
@@ -705,7 +691,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_new_in_memory() -> Result<()> {
-        let cache = DatabaseCache::new(true).await?;
+        let cache = DatabaseCache::new(":memory:").await?;
         assert_eq!(cache.len().await?, 0);
         assert!(cache.is_empty().await?);
         Ok(())
@@ -972,7 +958,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_check_and_cleanup() -> Result<()> {
-        let cache = create_test_cache().await?;
+        let cache_path = create_cache_path("visualvault", "cache.db").await?;
+        let cache = DatabaseCache::new(cache_path.to_str().unwrap()).await?;
 
         // Since we're using in-memory DB, we can't really test file size limits
         // But we can test that the function doesn't error

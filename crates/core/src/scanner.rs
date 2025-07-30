@@ -14,26 +14,20 @@ use visualvault_utils::media_types::{MEDIA_EXTENSIONS, determine_file_type};
 use walkdir::WalkDir;
 
 use crate::database_cache::CacheEntry;
-use crate::{DatabaseCache, DuplicateDetector};
+use crate::{Cache, DuplicateDetector};
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Scanner {
     pub is_scanning: Arc<AtomicBool>,
-    cache: Arc<RwLock<DatabaseCache>>,
-}
-
-impl Default for Scanner {
-    fn default() -> Self {
-        Self::new()
-    }
+    cache: Arc<RwLock<Box<dyn Cache>>>,
 }
 
 impl Scanner {
     #[must_use]
-    pub fn new() -> Self {
+    pub fn new<C: Cache + 'static>(cache: C) -> Self {
         Self {
             is_scanning: Arc::new(AtomicBool::new(false)),
-            cache: Arc::new(RwLock::new(DatabaseCache::new_uninit())),
+            cache: Arc::new(RwLock::new(Box::new(cache))),
         }
     }
 
@@ -42,15 +36,13 @@ impl Scanner {
     /// # Errors
     ///
     /// Returns an error if the cache cannot be initialized or if database access fails.
-    pub async fn init_cache(&self) -> Result<()> {
-        let cache = DatabaseCache::new(false).await?;
-        {
-            let mut cache_lock = self.cache.write().await;
-            *cache_lock = cache;
-        }
+    pub async fn set_cache<C: Cache + 'static>(&self, cache: C) -> Result<()> {
+        let mut cache_lock = self.cache.write().await;
+        *cache_lock = Box::new(cache);
+        drop(cache_lock); // Explicitly drop the lock to release it
         Ok(())
     }
-
+    /*
     /// Initializes the scanner's cache using in-memory storage.
     ///
     /// # Errors
@@ -64,6 +56,7 @@ impl Scanner {
         }
         Ok(())
     }
+    */
 
     /// Returns the current size of the cache.
     ///
@@ -410,7 +403,7 @@ impl Scanner {
             for (idx, file) in files.iter().enumerate() {
                 if let Some(hash) = &file.hash {
                     // Only update if we don't have a hash in cache
-                    let cache_lock: tokio::sync::RwLockReadGuard<'_, DatabaseCache> = self.cache.read().await;
+                    let cache_lock: tokio::sync::RwLockReadGuard<'_, Box<dyn Cache>> = self.cache.read().await;
                     if let Some(existing) = cache_lock.get(&file.path, file.size, &file.modified).await? {
                         if existing.hash.is_none() {
                             cache_lock.update_hash(&file.path, hash).await?;
@@ -578,6 +571,8 @@ mod tests {
     #![allow(clippy::expect_used)]
     #![allow(clippy::panic_in_result_fn)]
 
+    use crate::DatabaseCache;
+
     use super::*;
     use tempfile::TempDir;
     use tokio::fs;
@@ -594,14 +589,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_scanner_creation() -> Result<()> {
-        let scanner = Scanner::new();
+        let database_cache = DatabaseCache::new(":memory:")
+            .await
+            .expect("Failed to initialize database cache");
+        let scanner = Scanner::new(database_cache);
         assert!(scanner.is_complete());
         Ok(())
     }
 
     async fn create_test_scanner() -> Result<Scanner> {
-        let scanner = Scanner::new();
-        scanner.init_in_memory_cache().await?;
+        let database_cache = DatabaseCache::new(":memory:")
+            .await
+            .expect("Failed to initialize database cache");
+        let scanner = Scanner::new(database_cache);
         Ok(scanner)
     }
 
