@@ -26,4 +26,9 @@ lint-fix:
 test:
     @echo "\nRunning tests..."
     cargo nextest run --workspace 
-    @echo "Done running tests!\n"  
+    @echo "Done running tests!\n" 
+
+clippy:
+    echo "Running clippy checks..."
+    cargo clippy --all-targets --all-features -- -D warnings
+
