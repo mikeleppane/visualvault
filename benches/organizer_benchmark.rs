@@ -77,7 +77,6 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
     group.finish();
 }
 
-
 fn benchmark_organize_modes(c: &mut Criterion) {
     let mut group = c.benchmark_group("FileOrganizer::organize_modes");
     group.sample_size(10);
