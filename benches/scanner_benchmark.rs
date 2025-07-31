@@ -33,19 +33,20 @@ fn benchmark_scanner(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(file_count), file_count, |b, &file_count| {
             b.iter_batched(
                 || {
-                    let temp_dir = TempDir::new().unwrap();
-                    create_test_files(temp_dir.path(), file_count);
-                    temp_dir
-                },
-                |temp_dir| {
                     rt.block_on(async {
+                        let temp_dir = TempDir::new().unwrap();
+                        create_test_files(temp_dir.path(), file_count);
                         let database_cache = DatabaseCache::new(":memory:")
                             .await
                             .expect("Failed to initialize database cache");
                         let scanner = Scanner::new(database_cache);
                         let progress = Arc::new(RwLock::new(Progress::default()));
                         let settings = Settings::default();
-
+                        (scanner, temp_dir, progress, settings)
+                    })
+                },
+                |(scanner, temp_dir, progress, settings)| {
+                    rt.block_on(async {
                         scanner
                             .scan_directory(black_box(temp_dir.path()), false, progress, &settings, None)
                             .await
@@ -66,33 +67,39 @@ fn benchmark_scanner_parallel(c: &mut Criterion) {
     let mut group = c.benchmark_group("scanner_parallel");
     group.sample_size(10);
 
-    let temp_dir = TempDir::new().unwrap();
-    create_test_files(temp_dir.path(), 5000);
-
     for thread_count in &[1, 2, 4, 8] {
         group.bench_with_input(
             BenchmarkId::from_parameter(thread_count),
             thread_count,
             |b, &thread_count| {
-                b.iter(|| {
-                    rt.block_on(async {
-                        let database_cache = DatabaseCache::new(":memory:")
-                            .await
-                            .expect("Failed to initialize database cache");
-                        let scanner = Scanner::new(database_cache);
-                        let progress = Arc::new(RwLock::new(Progress::default()));
-                        let settings = Settings {
-                            parallel_processing: true,
-                            worker_threads: thread_count,
-                            ..Default::default()
-                        };
-
-                        scanner
-                            .scan_directory(black_box(temp_dir.path()), false, progress, &settings, None)
-                            .await
-                            .unwrap()
-                    })
-                });
+                b.iter_batched(
+                    || {
+                        rt.block_on(async {
+                            let temp_dir = TempDir::new().unwrap();
+                            create_test_files(temp_dir.path(), 5000);
+                            let database_cache = DatabaseCache::new(":memory:")
+                                .await
+                                .expect("Failed to initialize database cache");
+                            let scanner = Scanner::new(database_cache);
+                            let progress = Arc::new(RwLock::new(Progress::default()));
+                            let settings = Settings {
+                                parallel_processing: true,
+                                worker_threads: thread_count,
+                                ..Default::default()
+                            };
+                            (scanner, temp_dir, progress, settings)
+                        })
+                    },
+                    |(scanner, temp_dir, progress, settings)| {
+                        rt.block_on(async {
+                            scanner
+                                .scan_directory(black_box(temp_dir.path()), false, progress.clone(), &settings, None)
+                                .await
+                                .unwrap()
+                        })
+                    },
+                    criterion::BatchSize::SmallInput,
+                );
             },
         );
     }

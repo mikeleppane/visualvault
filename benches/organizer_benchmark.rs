@@ -43,20 +43,21 @@ fn benchmark_organize_by_type(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(file_count), file_count, |b, &file_count| {
             b.iter_batched(
                 || {
-                    let temp_dir = TempDir::new().unwrap();
-                    let files = create_test_media_files(file_count);
-                    let settings = Settings {
-                        destination_folder: Some(temp_dir.path().to_path_buf()),
-                        organize_by: "type".to_string(),
-                        ..Default::default()
-                    };
-                    (temp_dir, files, settings)
-                },
-                |(temp_dir, files, settings)| {
                     rt.block_on(async {
+                        let temp_dir = TempDir::new().unwrap();
+                        let files = create_test_media_files(file_count);
+                        let settings = Settings {
+                            destination_folder: Some(temp_dir.path().to_path_buf()),
+                            organize_by: "type".to_string(),
+                            ..Default::default()
+                        };
                         let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
                         let progress = Arc::new(RwLock::new(Progress::default()));
-
+                        (files, settings, organizer, progress)
+                    })
+                },
+                |(files, settings, organizer, progress)| {
+                    rt.block_on(async {
                         organizer
                             .organize_files_with_duplicates(
                                 black_box(files),
@@ -89,18 +90,20 @@ fn benchmark_organize_modes(c: &mut Criterion) {
         group.bench_with_input(BenchmarkId::from_parameter(mode), &mode, |b, &mode| {
             b.iter_batched(
                 || {
-                    let temp_dir = TempDir::new().unwrap();
-                    let settings = Settings {
-                        destination_folder: Some(temp_dir.path().to_path_buf()),
-                        organize_by: mode.to_string(),
-                        ..Default::default()
-                    };
-                    (temp_dir, files.clone(), settings)
-                },
-                |(temp_dir, files, settings)| {
                     rt.block_on(async {
+                        let temp_dir = TempDir::new().unwrap();
+                        let settings = Settings {
+                            destination_folder: Some(temp_dir.path().to_path_buf()),
+                            organize_by: mode.to_string(),
+                            ..Default::default()
+                        };
                         let organizer = FileOrganizer::new(temp_dir.path().to_path_buf()).await.unwrap();
                         let progress = Arc::new(RwLock::new(Progress::default()));
+                        (files.clone(), settings, organizer, progress)
+                    })
+                },
+                |(files, settings, organizer, progress)| {
+                    rt.block_on(async {
 
                         organizer
                             .organize_files_with_duplicates(
