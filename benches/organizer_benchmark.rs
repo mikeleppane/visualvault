@@ -53,7 +53,7 @@ async fn run_organize(dest: &std::path::Path, files: Vec<Arc<MediaFile>>, settin
 
 fn benchmark_organize_by_type(c: &mut Criterion) {
     let mut group = c.benchmark_group("FileOrganizer::organize_by_type");
-    group.sample_size(10);
+    group.sample_size(30);
 
     for &file_count in &[100usize, 500, 1000] {
         group.bench_with_input(BenchmarkId::new("files", file_count), &file_count, |b, &file_count| {
