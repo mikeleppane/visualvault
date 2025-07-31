@@ -104,7 +104,6 @@ fn benchmark_organize_modes(c: &mut Criterion) {
                 },
                 |(files, settings, organizer, progress)| {
                     rt.block_on(async {
-
                         organizer
                             .organize_files_with_duplicates(
                                 black_box(files),
